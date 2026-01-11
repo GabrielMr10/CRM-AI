@@ -1,0 +1,3 @@
+Versões de migração do banco de dados devem ser criadas aqui.
+Use o comando: alembic revision --autogenerate -m "descrição da migração"
+

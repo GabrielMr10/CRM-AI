@@ -25,8 +25,8 @@ router = APIRouter()
 
 @router.get("/", response_model=list[PipelineResponse], summary="Listar pipelines")
 def list_pipelines(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     is_active: bool | None = None,
 ):
     return PipelineService.list_all(db, tenant.id, is_active=is_active)
@@ -35,8 +35,8 @@ def list_pipelines(
 @router.post("/", response_model=PipelineResponse, status_code=status.HTTP_201_CREATED, summary="Criar pipeline")
 def create_pipeline(
     data: PipelineCreate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return PipelineService.create(db, data=data, tenant_id=tenant.id)
 
@@ -44,8 +44,8 @@ def create_pipeline(
 @router.get("/{pipeline_id}", response_model=PipelineWithStages, summary="Detalhe do pipeline")
 def get_pipeline(
     pipeline_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return PipelineService.get_with_stages(db, pipeline_id, tenant.id)
 
@@ -53,8 +53,8 @@ def get_pipeline(
 @router.get("/{pipeline_id}/kanban", response_model=KanbanView, summary="Visão Kanban")
 def get_kanban(
     pipeline_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.get_kanban(db, pipeline_id, tenant.id)
 
@@ -63,8 +63,8 @@ def get_kanban(
 def update_pipeline(
     pipeline_id: uuid.UUID,
     data: PipelineUpdate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return PipelineService.update(db, pipeline_id=pipeline_id, tenant_id=tenant.id, data=data)
 
@@ -72,8 +72,8 @@ def update_pipeline(
 @router.delete("/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Deletar pipeline")
 def delete_pipeline(
     pipeline_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     PipelineService.delete(db, pipeline_id=pipeline_id, tenant_id=tenant.id)
     return None
@@ -84,8 +84,8 @@ def delete_pipeline(
 @router.get("/{pipeline_id}/stages", response_model=list[StageResponse], summary="Listar stages")
 def list_stages(
     pipeline_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     PipelineService.get_or_404(db, pipeline_id, tenant.id)
     return StageService.list_by_pipeline(db, pipeline_id)
@@ -95,8 +95,8 @@ def list_stages(
 def create_stage(
     pipeline_id: uuid.UUID,
     data: StageCreate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return StageService.create(db, data=data, pipeline_id=pipeline_id, tenant_id=tenant.id)
 
@@ -105,8 +105,8 @@ def create_stage(
 def reorder_stages(
     pipeline_id: uuid.UUID,
     data: StageReorder,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return StageService.reorder(db, pipeline_id=pipeline_id, tenant_id=tenant.id, stage_ids=data.stage_ids)
 
@@ -115,8 +115,8 @@ def reorder_stages(
 def update_stage(
     stage_id: uuid.UUID,
     data: StageUpdate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return StageService.update(db, stage_id=stage_id, data=data)
 
@@ -124,8 +124,8 @@ def update_stage(
 @router.delete("/stages/{stage_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Deletar stage")
 def delete_stage(
     stage_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     StageService.delete(db, stage_id=stage_id)
     return None
@@ -137,8 +137,8 @@ def delete_stage(
 def create_deal(
     pipeline_id: uuid.UUID,
     data: DealCreate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     return DealService.create(
@@ -153,8 +153,8 @@ def create_deal(
 @router.get("/deals/{deal_id}", response_model=DealResponse, summary="Detalhe do deal")
 def get_deal(
     deal_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.get_or_404(db, deal_id, tenant.id)
 
@@ -163,8 +163,8 @@ def get_deal(
 def update_deal(
     deal_id: uuid.UUID,
     data: DealUpdate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.update(db, deal_id=deal_id, tenant_id=tenant.id, data=data)
 
@@ -173,8 +173,8 @@ def update_deal(
 def move_deal(
     deal_id: uuid.UUID,
     data: DealMove,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.move(
         db,
@@ -188,8 +188,8 @@ def move_deal(
 @router.post("/deals/{deal_id}/won", response_model=DealResponse, summary="Marcar como ganho")
 def mark_deal_won(
     deal_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.mark_won(db, deal_id=deal_id, tenant_id=tenant.id)
 
@@ -198,8 +198,8 @@ def mark_deal_won(
 def mark_deal_lost(
     deal_id: uuid.UUID,
     data: DealLost,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     return DealService.mark_lost(db, deal_id=deal_id, tenant_id=tenant.id, reason=data.reason)
 
@@ -207,8 +207,8 @@ def mark_deal_lost(
 @router.delete("/deals/{deal_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Deletar deal")
 def delete_deal(
     deal_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     DealService.delete(db, deal_id=deal_id, tenant_id=tenant.id)
     return None

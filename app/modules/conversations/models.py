@@ -150,7 +150,7 @@ class Conversation(Base):
     )
     
     # Metadados
-    metadata: Mapped[dict] = mapped_column(
+    extra_data: Mapped[dict] = mapped_column(
         JSONB,
         default=dict,
         nullable=False,

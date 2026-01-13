@@ -29,8 +29,8 @@ router = APIRouter()
     summary="Listar leads",
 )
 def list_leads(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -72,8 +72,8 @@ def list_leads(
 )
 def create_lead(
     data: LeadCreate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Cria novo lead."""
@@ -90,8 +90,8 @@ def create_lead(
     summary="Estatísticas de leads",
 )
 def get_lead_stats(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna estatísticas para dashboard."""
@@ -105,8 +105,8 @@ def get_lead_stats(
 )
 def get_lead_by_phone(
     phone: str,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Busca lead pelo telefone."""
@@ -120,8 +120,8 @@ def get_lead_by_phone(
 )
 def get_lead(
     lead_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna detalhes de um lead."""
@@ -136,8 +136,8 @@ def get_lead(
 def update_lead(
     lead_id: uuid.UUID,
     data: LeadUpdate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Atualiza dados do lead."""
@@ -157,8 +157,8 @@ def update_lead(
 def change_lead_status(
     lead_id: uuid.UUID,
     status: LeadStatus,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Altera status do lead no funil."""
@@ -177,9 +177,9 @@ def change_lead_status(
 )
 def assign_lead(
     lead_id: uuid.UUID,
+    tenant: CurrentTenant,
     user_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Atribui lead a um usuário."""
@@ -198,8 +198,8 @@ def assign_lead(
 )
 def delete_lead(
     lead_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Remove lead."""

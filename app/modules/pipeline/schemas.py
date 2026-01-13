@@ -1,6 +1,8 @@
 """
 Schemas Pydantic para Pipeline.
 """
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import Any
@@ -30,7 +32,7 @@ class PipelineUpdate(BaseModel):
 
 class PipelineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: uuid.UUID
     name: str
     description: str | None
@@ -40,11 +42,6 @@ class PipelineResponse(BaseModel):
     tenant_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-
-
-class PipelineWithStages(PipelineResponse):
-    """Pipeline com stages incluídos."""
-    stages: list["StageResponse"] = []
 
 
 # ==================== STAGE ====================
@@ -72,7 +69,7 @@ class StageUpdate(BaseModel):
 
 class StageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: uuid.UUID
     name: str
     position: int
@@ -87,6 +84,14 @@ class StageResponse(BaseModel):
 class StageReorder(BaseModel):
     """Para reordenar stages."""
     stage_ids: list[uuid.UUID] = Field(..., description="IDs na nova ordem")
+
+
+# ==================== PIPELINE WITH STAGES ====================
+# Moved here after StageResponse is defined
+
+class PipelineWithStages(PipelineResponse):
+    """Pipeline com stages incluídos."""
+    stages: list[StageResponse] = []
 
 
 # ==================== DEAL ====================
@@ -134,7 +139,7 @@ class DealLost(BaseModel):
 
 class DealResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: uuid.UUID
     title: str
     value: float
@@ -146,14 +151,14 @@ class DealResponse(BaseModel):
     is_lost: bool
     lost_reason: str | None
     custom_fields: dict[str, Any]
-    
+
     tenant_id: uuid.UUID
     pipeline_id: uuid.UUID
     stage_id: uuid.UUID
     lead_id: uuid.UUID | None
     assigned_to_id: uuid.UUID | None
     created_by_id: uuid.UUID | None
-    
+
     created_at: datetime
     updated_at: datetime
     won_at: datetime | None
@@ -173,7 +178,7 @@ class DealListResponse(BaseModel):
 class KanbanStage(BaseModel):
     """Stage com deals para visualização Kanban."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: uuid.UUID
     name: str
     position: int

@@ -33,8 +33,8 @@ router = APIRouter()
     summary="Listar conversas",
 )
 def list_conversations(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -59,8 +59,8 @@ def list_conversations(
     summary="Estatísticas de conversas",
 )
 def get_conversation_stats(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna estatísticas para dashboard."""
@@ -74,8 +74,8 @@ def get_conversation_stats(
 )
 def get_conversation_by_phone(
     phone: str,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Busca conversa pelo telefone."""
@@ -89,8 +89,8 @@ def get_conversation_by_phone(
 )
 def get_conversation(
     conversation_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
     messages_limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
@@ -107,8 +107,8 @@ def get_conversation(
 )
 def get_messages(
     conversation_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     before: datetime | None = None,
@@ -128,8 +128,8 @@ def get_messages(
 def send_message(
     conversation_id: uuid.UUID,
     data: MessageCreate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -154,8 +154,8 @@ def send_message(
 )
 def mark_as_read(
     conversation_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Marca conversa como lida."""
@@ -172,8 +172,8 @@ def mark_as_read(
 def toggle_bot(
     conversation_id: uuid.UUID,
     is_active: bool,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Ativa ou desativa o bot (Laura) nesta conversa."""
@@ -189,9 +189,9 @@ def toggle_bot(
 )
 def assign_conversation(
     conversation_id: uuid.UUID,
+    tenant: CurrentTenant,
     user_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Atribui conversa a um atendente."""
@@ -208,8 +208,8 @@ def assign_conversation(
 def link_lead(
     conversation_id: uuid.UUID,
     lead_id: uuid.UUID,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Vincula conversa a um lead."""

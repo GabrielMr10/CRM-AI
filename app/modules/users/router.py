@@ -91,9 +91,9 @@ def change_my_password(
     description="Lista usuários do tenant. Requer permissão de admin.",
 )
 def list_users(
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
     is_active: Annotated[bool | None, Query()] = None,
@@ -116,9 +116,9 @@ def list_users(
 )
 def create_user(
     data: UserCreate,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Cria novo usuário no tenant."""
     return UserService.create(
@@ -136,9 +136,9 @@ def create_user(
 )
 def get_user(
     user_id: uuid.UUID,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Retorna detalhes de um usuário."""
     user = UserService.get_or_404(db, user_id)
@@ -158,9 +158,9 @@ def get_user(
 def update_user(
     user_id: uuid.UUID,
     data: UserUpdateByAdmin,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Atualiza dados de um usuário."""
     user = UserService.get_or_404(db, user_id)
@@ -183,9 +183,9 @@ def update_user(
 )
 def delete_user(
     user_id: uuid.UUID,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Remove usuário do tenant."""
     user = UserService.get_or_404(db, user_id)
@@ -204,9 +204,9 @@ def delete_user(
 )
 def deactivate_user(
     user_id: uuid.UUID,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Desativa usuário (soft delete)."""
     user = UserService.get_or_404(db, user_id)
@@ -224,9 +224,9 @@ def deactivate_user(
 )
 def activate_user(
     user_id: uuid.UUID,
+    admin: AdminUser,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    admin: AdminUser = Depends(),
-    tenant: CurrentTenant = Depends(),
 ):
     """Reativa usuário desativado."""
     user = UserService.get_or_404(db, user_id)

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(while read dir)",
+      "Bash(do if [ -d \"c:\\\\Users\\\\gabri\\\\OneDrive\\\\Área de Trabalho\\\\CRM- Backend\\\\app\\\\modules$dir\" ])",
+      "Bash([ ! -f \"c:\\\\Users\\\\gabri\\\\OneDrive\\\\Área de Trabalho\\\\CRM- Backend\\\\app\\\\modules$dir\\\\__init__.py\" ])",
+      "Bash(then echo \"Missing: app/modules/$dir/__init__.py\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(findstr:*)"
+    ]
+  }
+}

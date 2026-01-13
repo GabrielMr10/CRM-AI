@@ -27,8 +27,8 @@ router = APIRouter()
     summary="Obter configuração",
 )
 def get_config(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna configuração do agente."""
@@ -43,8 +43,8 @@ def get_config(
 )
 def update_config(
     data: AgentConfigUpdate,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Atualiza configuração do agente."""
@@ -59,8 +59,8 @@ def update_config(
 )
 def toggle_agent(
     is_enabled: bool,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Liga/desliga o agente globalmente."""
@@ -74,8 +74,8 @@ def toggle_agent(
     summary="Status do agente",
 )
 def get_status(
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna status resumido (ativo, dentro do horário, etc)."""
@@ -91,8 +91,8 @@ def get_status(
 )
 def get_prompt(
     request: AgentPromptRequest,
+    tenant: CurrentTenant,
     db: Session = Depends(get_db),
-    tenant: CurrentTenant = Depends(),
 ):
     """
     Endpoint para n8n obter prompt montado.

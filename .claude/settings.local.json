@@ -9,7 +9,9 @@
       "Bash(then echo \"Missing: app/modules/$dir/__init__.py\")",
       "Bash(fi)",
       "Bash(done)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose restart:*)"
     ]
   }
 }

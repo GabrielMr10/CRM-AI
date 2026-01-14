@@ -27,7 +27,8 @@ from app.core.exceptions import UnauthorizedException, NotFoundException
 from app.db.session import SessionLocal
 
 # OAuth2 scheme - extrai token do header "Authorization: Bearer <token>"
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# Usa /login/form para compatibilidade com Swagger UI (OAuth2PasswordRequestForm)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login/form")
 
 
 def get_db() -> Generator[Session, None, None]:

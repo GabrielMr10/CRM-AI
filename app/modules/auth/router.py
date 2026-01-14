@@ -73,9 +73,9 @@ def login(
 @router.post(
     "/login/form",
     response_model=AuthResponse,
-    summary="Login (form)",
-    description="Login compatível com OAuth2 form (para Swagger UI).",
-    include_in_schema=False,  # Oculta do Swagger público
+    summary="Login (OAuth2 Form)",
+    description="Login compatível com OAuth2 form (usado pelo botão Authorize do Swagger UI).",
+    include_in_schema=True,  # Visível para Swagger UI usar no Authorize
 )
 def login_form(
     form_data: OAuth2PasswordRequestForm = Depends(),

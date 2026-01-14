@@ -1,6 +1,7 @@
 """
 Service - Lógica de autenticação.
 """
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -114,26 +115,39 @@ class AuthService:
         """
         # 1. Validar email único globalmente
         existing_user = UserRepository.get_by_email_global(db, data.email)
-        
+
         if existing_user:
             raise EmailAlreadyRegisteredError(data.email)
-        
-        # 2. Criar tenant
+
+        # 2. Criar tenant com slug gerado automaticamente pelo validator
+        # NÃO passar slug=None - deixa o validator do schema gerar
         tenant_data = TenantCreate(
             name=data.company_name,
-            email=data.email,  # Email do tenant = email do owner
-            slug=None,  # Será gerado automaticamente
+            email=data.email,
+            phone=data.phone if hasattr(data, 'phone') else None,
+            document=data.document if hasattr(data, 'document') else None,
+            # slug será gerado automaticamente pelo model_validator
         )
-        
-        # Verificar se slug existe
-        if TenantRepository.exists_slug(db, tenant_data.slug):
-            # Adicionar sufixo único
-            import uuid
-            tenant_data.slug = f"{tenant_data.slug}-{str(uuid.uuid4())[:8]}"
-        
+
+        # 3. Verificar se slug existe e garantir unicidade
+        base_slug = tenant_data.slug
+        final_slug = base_slug
+        counter = 0
+
+        while TenantRepository.exists_slug(db, final_slug):
+            counter += 1
+            if counter == 1:
+                final_slug = f"{base_slug}-{str(uuid.uuid4())[:6]}"
+            else:
+                final_slug = f"{base_slug}-{counter}"
+
+        # Atualizar slug garantido como único
+        tenant_data.slug = final_slug
+
+        # 4. Criar tenant no banco
         tenant = TenantRepository.create(db, data=tenant_data)
-        
-        # 3. Criar user owner
+
+        # 5. Criar user owner
         user = UserRepository.create(
             db,
             email=data.email,
@@ -141,7 +155,7 @@ class AuthService:
             full_name=data.full_name,
             tenant_id=tenant.id,
             role=UserRole.OWNER.value,
-            phone=data.phone,
+            phone=data.phone if hasattr(data, 'phone') else None,
         )
         
         # 4. Gerar tokens

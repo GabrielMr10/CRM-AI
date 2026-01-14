@@ -14,7 +14,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 
 
 # ==================== BASE ====================
@@ -67,32 +67,33 @@ class TenantCreate(TenantBase):
         description="Identificador único (letras minúsculas, números e hífens)",
         examples=["minha-empresa"],
     )
-    
-    @field_validator("slug", mode="before")
-    @classmethod
-    def generate_slug(cls, v, info):
+
+    @model_validator(mode="after")
+    def generate_slug_if_needed(self):
         """Gera slug do nome se não informado."""
-        if v:
-            return v.lower().strip()
-        
-        # Pega o nome dos valores
-        name = info.data.get("name", "")
-        if name:
-            # Remove acentos e caracteres especiais
-            slug = name.lower().strip()
-            slug = re.sub(r"[àáâãäå]", "a", slug)
-            slug = re.sub(r"[èéêë]", "e", slug)
-            slug = re.sub(r"[ìíîï]", "i", slug)
-            slug = re.sub(r"[òóôõö]", "o", slug)
-            slug = re.sub(r"[ùúûü]", "u", slug)
-            slug = re.sub(r"[ç]", "c", slug)
-            slug = re.sub(r"[^a-z0-9\s-]", "", slug)
-            slug = re.sub(r"[\s_]+", "-", slug)
-            slug = re.sub(r"-+", "-", slug)
-            slug = slug.strip("-")
-            return slug
-        
-        return v
+        if not self.slug:
+            # Pega o nome e gera o slug
+            name = self.name
+            if name:
+                # Remove acentos e caracteres especiais
+                slug = name.lower().strip()
+                slug = re.sub(r"[àáâãäå]", "a", slug)
+                slug = re.sub(r"[èéêë]", "e", slug)
+                slug = re.sub(r"[ìíîï]", "i", slug)
+                slug = re.sub(r"[òóôõö]", "o", slug)
+                slug = re.sub(r"[ùúûü]", "u", slug)
+                slug = re.sub(r"[ç]", "c", slug)
+                slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+                slug = re.sub(r"[\s_]+", "-", slug)
+                slug = re.sub(r"-+", "-", slug)
+                slug = slug.strip("-")
+                self.slug = slug
+            else:
+                raise ValueError("Nome é obrigatório para gerar slug")
+        else:
+            self.slug = self.slug.lower().strip()
+
+        return self
     
     @field_validator("document", mode="before")
     @classmethod

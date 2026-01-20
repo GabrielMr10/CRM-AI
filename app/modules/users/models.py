@@ -27,6 +27,7 @@ from app.modules.users.roles import UserRole
 
 if TYPE_CHECKING:
     from app.modules.tenants.models import Tenant
+    from app.modules.appointments.models import Appointment
 
 
 class User(Base):
@@ -151,7 +152,13 @@ class User(Base):
         "Tenant",
         back_populates="users",
     )
-    
+
+    appointments: Mapped[list["Appointment"]] = relationship(
+        "Appointment",
+        foreign_keys="Appointment.employee_id",
+        back_populates="employee",
+    )
+
     # ==================== MÉTODOS ====================
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

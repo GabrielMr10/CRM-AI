@@ -23,6 +23,7 @@ from app.db.session import Base
 
 if TYPE_CHECKING:
     from app.modules.users.models import User
+    from app.modules.appointments.models import Appointment
 
 
 class PlanType(str):
@@ -161,7 +162,13 @@ class Tenant(Base):
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
-    
+
+    appointments: Mapped[list["Appointment"]] = relationship(
+        "Appointment",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+
     # ==================== MÉTODOS ====================
     def __repr__(self) -> str:
         return f"<Tenant {self.slug} ({self.name})>"

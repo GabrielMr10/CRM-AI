@@ -10,3 +10,4 @@ from app.modules.leads.models import Lead # noqa
 from app.modules.pipeline.models import Pipeline, Stage, Deal  # noqa
 from app.modules.conversations.models import Conversation, Message  # noqa
 from app.modules.ai_agent.models import AgentConfig  # noqa
+from app.modules.appointments.models import Appointment  # noqa

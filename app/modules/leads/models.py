@@ -16,6 +16,7 @@ from app.db.session import Base
 if TYPE_CHECKING:
     from app.modules.tenants.models import Tenant
     from app.modules.users.models import User
+    from app.modules.appointments.models import Appointment
 
 
 class LeadStatus(str, Enum):
@@ -248,7 +249,11 @@ class Lead(Base):
         "User",
         foreign_keys=[created_by_id],
     )
-    
+    appointments: Mapped[list["Appointment"]] = relationship(
+        "Appointment",
+        back_populates="lead",
+    )
+
     # ==================== MÉTODOS ====================
     def __repr__(self) -> str:
         return f"<Lead {self.name} ({self.phone})>"

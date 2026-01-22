@@ -36,6 +36,7 @@ from app.modules.conversations.router import router as conversations_router
 from app.modules.webhooks.router import router as webhooks_router
 from app.modules.ai_agent.router import router as ai_agent_router
 from app.modules.appointments.router import router as appointments_router
+from app.modules.websockets.router import router as websocket_router
 
 app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
 app.include_router(tenants_router, prefix=f"{settings.API_V1_STR}/tenants", tags=["Tenants"])
@@ -46,6 +47,7 @@ app.include_router(conversations_router, prefix=f"{settings.API_V1_STR}/conversa
 app.include_router(webhooks_router, prefix=f"{settings.API_V1_STR}/webhooks", tags=["Webhooks"])
 app.include_router(ai_agent_router, prefix=f"{settings.API_V1_STR}/ai-agent", tags=["AI Agent"])
 app.include_router(appointments_router, prefix=f"{settings.API_V1_STR}/appointments", tags=["Appointments"])
+app.include_router(websocket_router, prefix=settings.API_V1_STR, tags=["WebSocket"])
 
 
 # ==================== HEALTH CHECKS ====================

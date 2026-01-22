@@ -8,7 +8,7 @@ USO:
     appointments = service.get_my_agenda(db, tenant_id, employee_id, start, end)
 """
 import uuid
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -123,18 +123,18 @@ class AppointmentService:
         booked = AppointmentRepository.get_booked_slots(db, tenant_id, employee_id, target_date)
         booked_ranges = [(a.start_datetime, a.end_datetime) for a in booked]
 
-        # Gera todos os slots possíveis
+        # Gera todos os slots possíveis (com timezone UTC)
         available_slots = []
-        current_time = datetime.combine(target_date, AppointmentService.BUSINESS_START)
-        end_of_day = datetime.combine(target_date, AppointmentService.BUSINESS_END)
+        current_time = datetime.combine(target_date, AppointmentService.BUSINESS_START, tzinfo=timezone.utc)
+        end_of_day = datetime.combine(target_date, AppointmentService.BUSINESS_END, tzinfo=timezone.utc)
 
         while current_time + timedelta(minutes=duration_minutes) <= end_of_day:
             slot_start = current_time
             slot_end = current_time + timedelta(minutes=duration_minutes)
 
             # Pula horário de almoço
-            lunch_start = datetime.combine(target_date, AppointmentService.LUNCH_START)
-            lunch_end = datetime.combine(target_date, AppointmentService.LUNCH_END)
+            lunch_start = datetime.combine(target_date, AppointmentService.LUNCH_START, tzinfo=timezone.utc)
+            lunch_end = datetime.combine(target_date, AppointmentService.LUNCH_END, tzinfo=timezone.utc)
 
             if slot_start < lunch_end and slot_end > lunch_start:
                 # Slot conflita com almoço, pula para depois do almoço

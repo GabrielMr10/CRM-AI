@@ -233,20 +233,28 @@ async def _notify_websocket_n8n(
         if action == "message_sent":
             # Notifica nova mensagem enviada pelo bot
             conversation_id = result.get("conversation_id")
-            message_id = result.get("message_id")
+            message_data = result.get("message")
 
-            if conversation_id and message_id:
+            if conversation_id and message_data:
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
-                    message_data={
-                        "id": message_id,
-                        "content": original_data.get("content", ""),
-                        "sent_by_bot": True,
-                        "message_type": original_data.get("message_type", "text"),
-                    }
+                    message_data=message_data,
                 )
                 logger.info(f"[WS] Notificação message_sent enviada - tenant: {tenant_id}")
+
+        elif action == "message_received":
+            # Notifica nova mensagem recebida do cliente
+            conversation_id = result.get("conversation_id")
+            message_data = result.get("message")
+
+            if conversation_id and message_data:
+                await ws_manager.broadcast_new_message(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    message_data=message_data,
+                )
+                logger.info(f"[WS] Notificação message_received enviada - tenant: {tenant_id}")
 
         elif action == "lead_update":
             # Notifica atualização de lead

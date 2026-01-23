@@ -212,6 +212,31 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
         logger.error(f"Erro ao processar evento {event}: {e}")
 
 
+# ==================== HEALTH CHECK ====================
+
+@router.get(
+    "/health",
+    summary="Verificar conexão com Evolution API"
+)
+async def check_evolution_health():
+    """
+    Verifica se a Evolution API está acessível.
+    Não requer autenticação - útil para debug.
+    """
+    from .evolution_client import evolution_client
+    from app.core.config import settings
+
+    is_connected = await evolution_client.check_connection()
+
+    return {
+        "evolution_api": {
+            "url": settings.EVOLUTION_API_URL,
+            "connected": is_connected,
+            "status": "ok" if is_connected else "unreachable"
+        }
+    }
+
+
 # ==================== STATUS GERAL ====================
 
 @router.get(

@@ -68,13 +68,23 @@ class ZAPIWebhookPayload(BaseModel):
 
 class N8NMessageSent(BaseModel):
     """Mensagem enviada pela Laura via n8n."""
-    
+
     conversation_id: str | None = None
     phone: str
     content: str
     message_type: str = "text"
     external_id: str | None = None
     sent_by_bot: bool = True
+
+
+class N8NMessageReceived(BaseModel):
+    """Mensagem recebida do cliente via n8n."""
+
+    phone: str
+    content: str
+    name: str | None = None
+    message_type: str = "text"
+    external_id: str | None = None
 
 
 class N8NLeadUpdate(BaseModel):

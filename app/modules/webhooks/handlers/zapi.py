@@ -114,21 +114,21 @@ class ZAPIWebhookHandler:
     ) -> dict:
         """Atualiza status de mensagem enviada."""
         from app.modules.conversations.repository import MessageRepository
-        
+
         message = MessageRepository.get_by_external_id(db, payload.messageId)
-        
+
         if not message:
             return {"success": True, "message": "Mensagem não encontrada"}
-        
+
         # Atualizar status
         delivered_at = None
         read_at = None
-        
+
         if payload.status == "delivered" and payload.momment:
             delivered_at = datetime.fromtimestamp(payload.momment, tz=timezone.utc)
         elif payload.status == "read" and payload.momment:
             read_at = datetime.fromtimestamp(payload.momment, tz=timezone.utc)
-        
+
         MessageRepository.update_status(
             db,
             message=message,
@@ -136,8 +136,13 @@ class ZAPIWebhookHandler:
             delivered_at=delivered_at,
             read_at=read_at,
         )
-        
-        return {"success": True, "status": payload.status}
+
+        return {
+            "success": True,
+            "status": payload.status,
+            "message_id": str(message.id),
+            "conversation_id": str(message.conversation_id),
+        }
     
     @staticmethod
     def _clean_phone(phone: str) -> str:

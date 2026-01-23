@@ -110,3 +110,32 @@ async def get_current_active_superuser(
 # Type aliases para uso mais limpo nas rotas
 DbSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[any, Depends(get_current_user)]  # Será tipado como User depois
+
+
+async def get_current_tenant(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Dependency que retorna o Tenant do usuário atual.
+
+    USO:
+        @router.get("/my-tenant")
+        def get_my_tenant(tenant = Depends(get_current_tenant)):
+            return tenant
+    """
+    # Import tardio para evitar circular import
+    from app.modules.tenants.repository import TenantRepository
+
+    tenant = TenantRepository.get_by_id(db, current_user.tenant_id)
+
+    if tenant is None:
+        raise NotFoundException("Tenant não encontrado")
+
+    if not tenant.is_active:
+        raise UnauthorizedException("Tenant desativado")
+
+    return tenant
+
+
+CurrentTenant = Annotated[any, Depends(get_current_tenant)]

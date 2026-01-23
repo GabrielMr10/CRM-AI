@@ -61,10 +61,15 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",")]
         return v
     
-    # ==================== INTEGRAÇÕES (futuro) ====================
+    # ==================== INTEGRAÇÕES ====================
     N8N_WEBHOOK_URL: str | None = None
     ZAPI_INSTANCE_ID: str | None = None
     ZAPI_TOKEN: str | None = None
+
+    # Evolution API (WhatsApp)
+    EVOLUTION_API_URL: str = "http://localhost:8080"
+    EVOLUTION_API_KEY: str = "evolution-api-key"
+    EVOLUTION_WEBHOOK_URL: str = "http://localhost:8000/api/v1/integrations/webhook/evolution"
     
     # ==================== PYDANTIC CONFIG ====================
     model_config = SettingsConfigDict(

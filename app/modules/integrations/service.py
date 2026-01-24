@@ -33,6 +33,9 @@ class IntegrationService:
         try:
             result = await evolution_client.get_connection_state(str(tenant_id))
 
+            # Pega o estado cru (ex: 'open', 'close', 'connecting')
+            raw_state = result.get("state", "error")
+
             # Mapeia o estado para o enum
             state_map = {
                 "open": ConnectionState.OPEN,
@@ -41,13 +44,16 @@ class IntegrationService:
                 "not_found": ConnectionState.NOT_FOUND,
                 "error": ConnectionState.ERROR,
             }
+            state = state_map.get(raw_state, ConnectionState.ERROR)
 
-            state = state_map.get(result.get("state", "error"), ConnectionState.ERROR)
+            # CORREÇÃO: Considera conectado se state == "open"
+            # Não depende mais apenas do campo "connected" da API
+            is_connected = (raw_state == "open") or (result.get("connected") is True)
 
             return WhatsAppStatusResponse(
-                instance=result["instance"],
+                instance=result.get("instance", f"tenant_{tenant_id}"),
                 state=state,
-                connected=result.get("connected", False),
+                connected=is_connected,
                 error=result.get("error")
             )
         except Exception as e:

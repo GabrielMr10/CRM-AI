@@ -29,34 +29,55 @@ class IntegrationService:
     """Serviço para gerenciar integrações do tenant."""
 
     async def get_whatsapp_status(self, tenant_id: UUID) -> WhatsAppStatusResponse:
-        """Verifica o status da conexão WhatsApp do tenant."""
+        """Verifica o status da conexão WhatsApp do tenant (Modo Blindado)."""
         try:
+            # Busca o status na Evolution
             result = await evolution_client.get_connection_state(str(tenant_id))
 
-            # Pega o estado cru (ex: 'open', 'close', 'connecting')
-            raw_state = result.get("state", "error")
+            # DEBUG: Mostra no terminal o que a Evolution respondeu
+            print(f"👀 RETORNO DA EVOLUTION: {result}")
 
-            # Mapeia o estado para o enum
+            # 1. Tenta achar o estado em vários lugares possíveis do JSON
+            raw_state = "disconnected"
+
+            if isinstance(result, dict):
+                # Prioridade 1: state na raiz
+                if result.get("state"):
+                    raw_state = result["state"]
+                # Prioridade 2: state dentro de 'instance'
+                elif isinstance(result.get("instance"), dict) and result["instance"].get("state"):
+                    raw_state = result["instance"]["state"]
+                # Prioridade 3: state dentro de 'instance_data'
+                elif isinstance(result.get("instance_data"), dict) and result["instance_data"].get("state"):
+                    raw_state = result["instance_data"]["state"]
+
+            # Normaliza para minúsculo (para evitar Open vs open)
+            raw_state = str(raw_state).lower()
+
+            # 2. Verifica conexão
+            # Aceita 'open' ou 'connected' como sinal de sucesso
+            is_connected = raw_state in ["open", "connected"]
+
+            # 3. Mapeia para o Enum do Frontend
             state_map = {
                 "open": ConnectionState.OPEN,
+                "connected": ConnectionState.OPEN,
                 "close": ConnectionState.CLOSE,
                 "connecting": ConnectionState.CONNECTING,
-                "not_found": ConnectionState.NOT_FOUND,
-                "error": ConnectionState.ERROR,
             }
-            state = state_map.get(raw_state, ConnectionState.ERROR)
-
-            # CORREÇÃO: Considera conectado se state == "open"
-            # Não depende mais apenas do campo "connected" da API
-            is_connected = (raw_state == "open") or (result.get("connected") is True)
+            state = state_map.get(raw_state, ConnectionState.CLOSE)
+            if is_connected:
+                state = ConnectionState.OPEN
 
             return WhatsAppStatusResponse(
-                instance=result.get("instance", f"tenant_{tenant_id}"),
+                instance=f"tenant_{tenant_id}",
                 state=state,
                 connected=is_connected,
-                error=result.get("error")
+                error=None
             )
+
         except Exception as e:
+            print(f"❌ Erro no status: {e}")
             logger.error(f"Erro ao verificar status WhatsApp: {e}")
             return WhatsAppStatusResponse(
                 instance=f"tenant_{tenant_id}",

@@ -63,7 +63,8 @@ class IntegrationService:
         """
         Inicia o processo de conexão do WhatsApp.
         - Se já conectado, retorna status
-        - Se desconectado, gera QR Code
+        - Se instância existe mas desconectada, gera QR Code
+        - Se instância não existe, cria e gera QR Code
         """
         tenant_str = str(tenant_id)
 
@@ -83,13 +84,33 @@ class IntegrationService:
                     message="WhatsApp já está conectado"
                 )
 
-            # 2. Cria instância se não existir
-            await evolution_client.create_instance(tenant_str)
+            # 2. Tenta criar instância (ignora se já existe)
+            try:
+                await evolution_client.create_instance(tenant_str)
+            except Exception as e:
+                # Ignora erro de "já existe"
+                error_str = str(e).lower()
+                if "already in use" not in error_str and "403" not in error_str and "409" not in error_str:
+                    raise
+                logger.info(f"Instância já existe, continuando para QR Code...")
 
             # 3. Gera QR Code
             qr_result = await evolution_client.get_qrcode(tenant_str)
 
             if not qr_result.get("base64"):
+                # Talvez já esteja conectado após criar
+                status = await evolution_client.get_connection_state(tenant_str)
+                if status.get("connected"):
+                    return WhatsAppConnectResponse(
+                        instance=status["instance"],
+                        status="already_connected",
+                        connection=WhatsAppStatusResponse(
+                            instance=status["instance"],
+                            state=ConnectionState.OPEN,
+                            connected=True
+                        ),
+                        message="WhatsApp já está conectado"
+                    )
                 raise QRCodeGenerationException()
 
             return WhatsAppConnectResponse(

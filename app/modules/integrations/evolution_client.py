@@ -102,7 +102,7 @@ class EvolutionAPIClient:
     async def create_instance(self, tenant_id: str) -> Dict[str, Any]:
         """
         Cria uma nova instância na Evolution API para o tenant.
-        Se já existir, retorna a existente.
+        Se já existir (erro 403 ou 409), ignora e retorna sucesso.
         """
         instance_name = self._get_instance_name(tenant_id)
 
@@ -126,14 +126,35 @@ class EvolutionAPIClient:
             }
         }
 
-        result = await self._make_request("POST", "/instance/create", payload)
+        try:
+            result = await self._make_request("POST", "/instance/create", payload)
 
-        # Se já existe (409), não é erro
-        if result["status_code"] in [200, 201, 409]:
-            logger.info(f"Instância criada/existente: {instance_name}")
-            return {"instance": instance_name, "status": "ok"}
+            if result["status_code"] in [200, 201]:
+                logger.info(f"Instância criada: {instance_name}")
+                return {"instance": instance_name, "status": "created"}
 
-        raise Exception(f"Erro ao criar instância: {result['data']}")
+            # 403 = já existe (Forbidden - "already in use")
+            if result["status_code"] == 403:
+                error_msg = str(result.get("data", {}))
+                if "already in use" in error_msg.lower():
+                    logger.info(f"Instância já existe (403): {instance_name}")
+                    return {"instance": instance_name, "status": "exists"}
+
+            # 409 = conflito, também significa que já existe
+            if result["status_code"] == 409:
+                logger.info(f"Instância já existe (409): {instance_name}")
+                return {"instance": instance_name, "status": "exists"}
+
+            # Outros erros
+            raise Exception(f"Erro ao criar instância: {result['data']}")
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Trata caso o erro venha como exceção
+            if "already in use" in error_str or "403" in error_str:
+                logger.info(f"Instância já existe (exception): {instance_name}")
+                return {"instance": instance_name, "status": "exists"}
+            raise
 
     async def get_connection_state(self, tenant_id: str) -> Dict[str, Any]:
         """

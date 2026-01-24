@@ -29,51 +29,57 @@ class IntegrationService:
     """Serviço para gerenciar integrações do tenant."""
 
     async def get_whatsapp_status(self, tenant_id: UUID) -> WhatsAppStatusResponse:
-        """Verifica o status da conexão WhatsApp do tenant (Modo Blindado)."""
+        """Verifica o status (Modo Blindado) e acorda instância se necessário."""
         try:
-            # Busca o status na Evolution
-            result = await evolution_client.get_connection_state(str(tenant_id))
+            tenant_str = str(tenant_id)
 
-            # DEBUG: Mostra no terminal o que a Evolution respondeu
-            print(f"👀 RETORNO DA EVOLUTION: {result}")
+            # 1. Busca o status usando lógica robusta (com fallback)
+            result = await evolution_client.get_connection_state(tenant_str)
 
-            # 1. Tenta achar o estado em vários lugares possíveis do JSON
-            raw_state = "disconnected"
+            print(f"👀 STATUS ROBUSTO: {result}")
 
-            if isinstance(result, dict):
-                # Prioridade 1: state na raiz
-                if result.get("state"):
-                    raw_state = result["state"]
-                # Prioridade 2: state dentro de 'instance'
-                elif isinstance(result.get("instance"), dict) and result["instance"].get("state"):
-                    raw_state = result["instance"]["state"]
-                # Prioridade 3: state dentro de 'instance_data'
-                elif isinstance(result.get("instance_data"), dict) and result["instance_data"].get("state"):
-                    raw_state = result["instance_data"]["state"]
+            raw_state = str(result.get("state", "unknown")).lower()
 
-            # Normaliza para minúsculo (para evitar Open vs open)
-            raw_state = str(raw_state).lower()
+            # 2. Lógica de AUTO-RECUPERAÇÃO
+            # Se está "unknown" ou "disconnected", tenta acordar a instância
+            if raw_state in ["unknown", "disconnected"]:
+                logger.info(f"💤 Instância {tenant_id} parece dormindo ({raw_state}). Tentando acordar...")
+                try:
+                    # Força a Evolution a subir o processo
+                    await evolution_client.get_qrcode(tenant_str)
 
-            # 2. Verifica conexão
-            # Aceita 'open' ou 'connected' como sinal de sucesso
-            is_connected = raw_state in ["open", "connected"]
+                    # Retorna 'connecting' para não mostrar erro
+                    return WhatsAppStatusResponse(
+                        instance=f"tenant_{tenant_id}",
+                        state=ConnectionState.CONNECTING,
+                        connected=False,
+                        error=None
+                    )
+                except Exception:
+                    pass  # Se falhar, segue normalmente
 
-            # 3. Mapeia para o Enum do Frontend
+            # 3. Mapeamento Final
+            is_connected = raw_state in ["open", "connected", "online"]
+
             state_map = {
                 "open": ConnectionState.OPEN,
                 "connected": ConnectionState.OPEN,
+                "online": ConnectionState.OPEN,
                 "close": ConnectionState.CLOSE,
+                "closed": ConnectionState.CLOSE,
                 "connecting": ConnectionState.CONNECTING,
+                "unknown": ConnectionState.CLOSE,
             }
+
             state = state_map.get(raw_state, ConnectionState.CLOSE)
             if is_connected:
                 state = ConnectionState.OPEN
 
             return WhatsAppStatusResponse(
-                instance=f"tenant_{tenant_id}",
+                instance=result.get("instance", f"tenant_{tenant_id}"),
                 state=state,
                 connected=is_connected,
-                error=None
+                error=result.get("error")
             )
 
         except Exception as e:

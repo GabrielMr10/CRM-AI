@@ -159,10 +159,11 @@ class EvolutionAPIClient:
     async def get_connection_state(self, tenant_id: str) -> Dict[str, Any]:
         """
         Verifica o estado da conexão da instância.
-        Retorna: {"state": "open"} ou {"state": "close"}
+        Tenta múltiplos endpoints para garantir resposta correta.
         """
         instance_name = self._get_instance_name(tenant_id)
 
+        # Primeiro tenta o endpoint connectionState
         try:
             result = await self._make_request(
                 "GET",
@@ -170,13 +171,22 @@ class EvolutionAPIClient:
                 timeout=10.0
             )
 
+            print(f"👀 connectionState response: {result}")
+
             if result["success"]:
-                state = result["data"].get("state", "unknown")
+                data = result["data"]
+                state = data.get("state", "unknown")
+
+                # Se estado é "unknown", tenta endpoint alternativo
+                if state == "unknown":
+                    return await self._get_instance_info_fallback(instance_name)
+
                 return {
                     "instance": instance_name,
                     "state": state,
                     "connected": state == "open"
                 }
+
             elif result["status_code"] == 404:
                 return {
                     "instance": instance_name,
@@ -184,13 +194,72 @@ class EvolutionAPIClient:
                     "connected": False
                 }
 
+        except Exception as e:
+            print(f"❌ Erro connectionState: {e}")
+
+        # Fallback: buscar info da instância
+        return await self._get_instance_info_fallback(instance_name)
+
+    async def _get_instance_info_fallback(self, instance_name: str) -> Dict[str, Any]:
+        """
+        Fallback: busca informações detalhadas da instância
+        para determinar se está conectada.
+        """
+        try:
+            result = await self._make_request(
+                "GET",
+                f"/instance/fetchInstances",
+                timeout=10.0
+            )
+
+            print(f"👀 fetchInstances response: {result}")
+
+            if result["success"]:
+                data = result["data"]
+                instances = data if isinstance(data, list) else [data]
+
+                for inst in instances:
+                    if isinstance(inst, dict):
+                        # Tenta pegar o nome da instância
+                        inst_name = (
+                            inst.get("instanceName") or
+                            inst.get("instance", {}).get("instanceName") if isinstance(inst.get("instance"), dict) else None or
+                            inst.get("name")
+                        )
+
+                        # Tenta pegar o estado
+                        inst_state = (
+                            inst.get("state") or
+                            (inst.get("instance", {}).get("state") if isinstance(inst.get("instance"), dict) else None) or
+                            inst.get("connectionStatus") or
+                            inst.get("status") or
+                            "unknown"
+                        )
+
+                        # Verifica campo específico de conexão
+                        if inst.get("connected") is True:
+                            inst_state = "open"
+                        elif isinstance(inst.get("instance"), dict) and inst.get("instance", {}).get("status") == "open":
+                            inst_state = "open"
+
+                        if inst_name == instance_name:
+                            inst_state = str(inst_state).lower()
+                            is_connected = inst_state in ["open", "connected", "online"]
+
+                            return {
+                                "instance": instance_name,
+                                "state": "open" if is_connected else inst_state,
+                                "connected": is_connected
+                            }
+
             return {
                 "instance": instance_name,
-                "state": "error",
+                "state": "close",
                 "connected": False
             }
 
         except Exception as e:
+            print(f"❌ Erro fetchInstances: {e}")
             return {
                 "instance": instance_name,
                 "state": "error",

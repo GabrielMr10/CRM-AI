@@ -137,17 +137,29 @@ async def evolution_webhook(
     - MESSAGES_UPSERT: Nova mensagem recebida
     - MESSAGES_UPDATE: Status de mensagem atualizado
     """
+    # DEBUG: Log completo do payload recebido
+    print(f"")
+    print(f"{'='*60}")
+    print(f"📥 [WEBHOOK RECEBIDO]")
+    print(f"   Evento: {payload.event}")
+    print(f"   Instância: {payload.instance}")
+    print(f"   Data keys: {list(payload.data.keys()) if payload.data else 'None'}")
+    print(f"{'='*60}")
+
     logger.info(f"[Evolution Webhook] Evento: {payload.event}, Instância: {payload.instance}")
 
     # Extrai tenant_id do nome da instância (tenant_UUID)
     instance_name = payload.instance
     if instance_name.startswith("tenant_"):
         tenant_id = instance_name.replace("tenant_", "")
+        print(f"✅ Tenant ID extraído: {tenant_id}")
     else:
+        print(f"❌ Instância não segue padrão tenant_: {instance_name}")
         logger.warning(f"Instância não segue padrão tenant_: {instance_name}")
         return {"status": "ignored"}
 
     # Processa eventos em background
+    print(f"🚀 Disparando processamento em background para evento: {payload.event}")
     background_tasks.add_task(
         process_evolution_event,
         tenant_id=tenant_id,
@@ -162,8 +174,18 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
     """Processa eventos da Evolution API e notifica via WebSocket."""
     from app.core.websocket_manager import ws_manager
 
+    print(f"")
+    print(f"🔄 [PROCESSANDO EVENTO]")
+    print(f"   Tenant: {tenant_id}")
+    print(f"   Evento: {event}")
+    print(f"   Data: {str(data)[:200]}...")  # Primeiros 200 chars
+
+    # Normaliza o nome do evento (Evolution envia lowercase com ponto)
+    event_normalized = event.upper().replace(".", "_")
+    print(f"   Evento normalizado: {event_normalized}")
+
     try:
-        if event == "CONNECTION_UPDATE":
+        if event_normalized == "CONNECTION_UPDATE":
             # Notifica frontend sobre mudança de conexão
             state = data.get("state", "unknown")
             await ws_manager.send_to_tenant(tenant_id, {
@@ -173,7 +195,7 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] Conexão WhatsApp: {state}")
 
-        elif event == "QRCODE_UPDATED":
+        elif event_normalized == "QRCODE_UPDATED":
             # Notifica frontend com novo QR Code
             qrcode_data = data.get("qrcode", {})
             await ws_manager.send_to_tenant(tenant_id, {
@@ -183,11 +205,12 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] QR Code atualizado")
 
-        elif event == "MESSAGES_UPSERT":
+        elif event_normalized == "MESSAGES_UPSERT":
             # Nova mensagem recebida - processa e salva no banco
+            print(f"📩 Processando MESSAGES_UPSERT...")
             await _process_messages_upsert(tenant_id, data)
 
-        elif event == "MESSAGES_UPDATE":
+        elif event_normalized == "MESSAGES_UPDATE":
             # Atualização de status de mensagem (delivered, read)
             # TODO: Atualizar status no banco e notificar
             logger.info(f"[Tenant {tenant_id}] Status de mensagem atualizado")
@@ -196,14 +219,21 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
                 "data": data
             })
 
-        elif event == "SEND_MESSAGE":
+        elif event_normalized == "SEND_MESSAGE":
             # Confirmação de mensagem enviada
             logger.debug(f"[Tenant {tenant_id}] Mensagem enviada confirmada")
 
         else:
+            print(f"⚠️ [Tenant {tenant_id}] Evento não tratado: {event} (normalizado: {event_normalized})")
             logger.debug(f"[Tenant {tenant_id}] Evento não tratado: {event}")
 
     except Exception as e:
+        print(f"")
+        print(f"❌ [ERRO NO PROCESSAMENTO]")
+        print(f"   Evento: {event}")
+        print(f"   Erro: {e}")
+        import traceback
+        traceback.print_exc()
         logger.error(f"Erro ao processar evento {event}: {e}")
 
 
@@ -221,7 +251,10 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
     from app.modules.conversations.models import MessageType, MessageDirection
     from app.modules.conversations.exceptions import DuplicateMessageError
 
-    print(f"📩 [Evolution MESSAGES_UPSERT] Processando: {data}")
+    print(f"📩 [Evolution MESSAGES_UPSERT] Processando...")
+    print(f"   Data type: {type(data)}")
+    print(f"   Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+    print(f"   Data: {str(data)[:500]}")
 
     try:
         # Evolution API envia mensagens em diferentes formatos

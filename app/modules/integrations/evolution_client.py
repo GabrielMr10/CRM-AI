@@ -113,7 +113,7 @@ class EvolutionAPIClient:
             "integration": "WHATSAPP-BAILEYS",
             "webhook": {
                 "url": self.webhook_url,
-                "byEvents": True,
+                "byEvents": False,
                 "base64": False,
                 "events": [
                     "CONNECTION_UPDATE",

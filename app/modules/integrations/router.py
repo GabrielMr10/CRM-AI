@@ -214,7 +214,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
     """
     from uuid import UUID
     from datetime import datetime, timezone
-    from app.core.database import SessionLocal
+    from app.db.session import SessionLocal
     from app.core.websocket_manager import ws_manager
     from app.modules.conversations.service import ConversationService
     from app.modules.conversations.schemas import MessageFromWebhook

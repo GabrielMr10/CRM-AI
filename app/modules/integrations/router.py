@@ -184,13 +184,8 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             logger.info(f"[Tenant {tenant_id}] QR Code atualizado")
 
         elif event == "MESSAGES_UPSERT":
-            # Nova mensagem recebida
-            # TODO: Integrar com módulo de conversas para salvar e notificar
-            logger.info(f"[Tenant {tenant_id}] Nova mensagem recebida")
-            await ws_manager.send_to_tenant(tenant_id, {
-                "type": "whatsapp_new_message",
-                "data": data
-            })
+            # Nova mensagem recebida - processa e salva no banco
+            await _process_messages_upsert(tenant_id, data)
 
         elif event == "MESSAGES_UPDATE":
             # Atualização de status de mensagem (delivered, read)
@@ -210,6 +205,161 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
 
     except Exception as e:
         logger.error(f"Erro ao processar evento {event}: {e}")
+
+
+async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
+    """
+    Processa evento MESSAGES_UPSERT da Evolution API.
+    Salva mensagem no banco e notifica via WebSocket.
+    """
+    from uuid import UUID
+    from datetime import datetime, timezone
+    from app.core.database import SessionLocal
+    from app.core.websocket_manager import ws_manager
+    from app.modules.conversations.service import ConversationService
+    from app.modules.conversations.schemas import MessageFromWebhook
+    from app.modules.conversations.models import MessageType, MessageDirection
+    from app.modules.conversations.exceptions import DuplicateMessageError
+
+    print(f"📩 [Evolution MESSAGES_UPSERT] Processando: {data}")
+
+    try:
+        # Evolution API envia mensagens em diferentes formatos
+        # Pode ser uma lista ou objeto único
+        messages = data.get("messages", [data]) if "messages" not in data else data.get("messages", [])
+        if not isinstance(messages, list):
+            messages = [messages]
+
+        for msg in messages:
+            # Extrai dados da mensagem
+            key = msg.get("key", {})
+            message_content = msg.get("message", {})
+
+            # Ignora mensagens enviadas por nós (fromMe = true)
+            if key.get("fromMe", False):
+                logger.debug(f"[Tenant {tenant_id}] Mensagem própria ignorada")
+                continue
+
+            # Extrai telefone (remove @s.whatsapp.net)
+            remote_jid = key.get("remoteJid", "")
+            phone = remote_jid.replace("@s.whatsapp.net", "").replace("@g.us", "")
+
+            if not phone:
+                logger.warning(f"[Tenant {tenant_id}] Telefone não encontrado na mensagem")
+                continue
+
+            # Extrai ID externo
+            external_id = key.get("id", "")
+
+            # Extrai conteúdo da mensagem (diferentes formatos)
+            content = (
+                message_content.get("conversation") or
+                message_content.get("extendedTextMessage", {}).get("text") or
+                message_content.get("imageMessage", {}).get("caption") or
+                message_content.get("videoMessage", {}).get("caption") or
+                message_content.get("documentMessage", {}).get("caption") or
+                ""
+            )
+
+            # Determina tipo de mensagem
+            msg_type = MessageType.TEXT
+            media_url = None
+            media_mime_type = None
+
+            if "imageMessage" in message_content:
+                msg_type = MessageType.IMAGE
+                media_mime_type = message_content.get("imageMessage", {}).get("mimetype")
+            elif "audioMessage" in message_content:
+                msg_type = MessageType.AUDIO
+                media_mime_type = message_content.get("audioMessage", {}).get("mimetype")
+            elif "videoMessage" in message_content:
+                msg_type = MessageType.VIDEO
+                media_mime_type = message_content.get("videoMessage", {}).get("mimetype")
+            elif "documentMessage" in message_content:
+                msg_type = MessageType.DOCUMENT
+                media_mime_type = message_content.get("documentMessage", {}).get("mimetype")
+            elif "stickerMessage" in message_content:
+                msg_type = MessageType.STICKER
+            elif "locationMessage" in message_content:
+                msg_type = MessageType.LOCATION
+                loc = message_content.get("locationMessage", {})
+                content = f"Localização: {loc.get('degreesLatitude')}, {loc.get('degreesLongitude')}"
+            elif "contactMessage" in message_content:
+                msg_type = MessageType.CONTACT
+                contact = message_content.get("contactMessage", {})
+                content = f"Contato: {contact.get('displayName', 'Desconhecido')}"
+
+            # Extrai nome do contato
+            contact_name = msg.get("pushName", "")
+
+            # Timestamp
+            timestamp = msg.get("messageTimestamp")
+            whatsapp_timestamp = None
+            if timestamp:
+                try:
+                    whatsapp_timestamp = datetime.fromtimestamp(int(timestamp), tz=timezone.utc)
+                except Exception:
+                    whatsapp_timestamp = datetime.now(timezone.utc)
+            else:
+                whatsapp_timestamp = datetime.now(timezone.utc)
+
+            print(f"📩 [Evolution] Telefone: {phone}, Conteúdo: {content[:50]}..., Tipo: {msg_type}")
+
+            # Salva no banco de dados
+            db = SessionLocal()
+            try:
+                tenant_uuid = UUID(tenant_id)
+
+                message_data = MessageFromWebhook(
+                    external_id=external_id,
+                    phone=phone,
+                    content=content or f"[{msg_type.value}]",
+                    message_type=msg_type,
+                    direction=MessageDirection.INBOUND,
+                    contact_name=contact_name,
+                    media_url=media_url,
+                    media_mime_type=media_mime_type,
+                    whatsapp_timestamp=whatsapp_timestamp,
+                    raw_data=msg,
+                )
+
+                conversation, message = ConversationService.receive_message(
+                    db,
+                    tenant_id=tenant_uuid,
+                    data=message_data,
+                )
+
+                logger.info(f"[Tenant {tenant_id}] Mensagem salva: {message.id}")
+
+                # Notifica via WebSocket
+                await ws_manager.broadcast_new_message(
+                    tenant_id=tenant_id,
+                    conversation_id=str(conversation.id),
+                    message={
+                        "id": str(message.id),
+                        "content": message.content,
+                        "direction": "inbound",
+                        "message_type": msg_type.value,
+                        "created_at": message.created_at.isoformat(),
+                        "sender_name": contact_name or phone,
+                        "sender_phone": phone,
+                        "external_id": external_id,
+                    }
+                )
+
+            except DuplicateMessageError:
+                logger.debug(f"[Tenant {tenant_id}] Mensagem duplicada ignorada: {external_id}")
+            except Exception as e:
+                logger.error(f"[Tenant {tenant_id}] Erro ao salvar mensagem: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                db.close()
+
+    except Exception as e:
+        logger.error(f"[Tenant {tenant_id}] Erro ao processar MESSAGES_UPSERT: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # ==================== HEALTH CHECK ====================

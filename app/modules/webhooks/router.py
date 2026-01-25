@@ -133,7 +133,7 @@ async def _notify_websocket_zapi_message(
         await ws_manager.broadcast_new_message(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            message_data={
+            message={
                 "id": message_id,
                 "content": result.get("content", payload.text or ""),
                 "sent_by_bot": False,
@@ -239,7 +239,7 @@ async def _notify_websocket_n8n(
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
-                    message_data=message_data,
+                    message=message_data,
                 )
                 logger.info(f"[WS] Notificação message_sent enviada - tenant: {tenant_id}")
 
@@ -252,7 +252,7 @@ async def _notify_websocket_n8n(
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
-                    message_data=message_data,
+                    message=message_data,
                 )
                 logger.info(f"[WS] Notificação message_received enviada - tenant: {tenant_id}")
 

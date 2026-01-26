@@ -308,11 +308,14 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 img_msg = message_content.get("imageMessage", {})
                 media_mime_type = img_msg.get("mimetype")
                 media_url = img_msg.get("url") or img_msg.get("directPath")
-                if not media_url and external_id:
+                if not media_url:
                     try:
-                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        print(f"🖼️ Baixando imagem...")
+                        media_data = await evolution_client.get_media_base64(tenant_id, key)
                         if media_data.get("base64"):
-                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                            mime = media_data.get("mimetype") or media_mime_type or "image/jpeg"
+                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
+                            print(f"✅ Imagem baixada: {len(media_data.get('base64', ''))} chars")
                     except Exception as e:
                         print(f"⚠️ Erro ao baixar imagem: {e}")
 
@@ -321,11 +324,14 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 audio_msg = message_content.get("audioMessage", {})
                 media_mime_type = audio_msg.get("mimetype")
                 media_url = audio_msg.get("url") or audio_msg.get("directPath")
-                if not media_url and external_id:
+                if not media_url:
                     try:
-                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        print(f"🔊 Baixando áudio...")
+                        media_data = await evolution_client.get_media_base64(tenant_id, key)
                         if media_data.get("base64"):
-                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                            mime = media_data.get("mimetype") or media_mime_type or "audio/ogg"
+                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
+                            print(f"✅ Áudio baixado: {len(media_data.get('base64', ''))} chars")
                     except Exception as e:
                         print(f"⚠️ Erro ao baixar áudio: {e}")
 
@@ -334,11 +340,14 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 video_msg = message_content.get("videoMessage", {})
                 media_mime_type = video_msg.get("mimetype")
                 media_url = video_msg.get("url") or video_msg.get("directPath")
-                if not media_url and external_id:
+                if not media_url:
                     try:
-                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        print(f"🎬 Baixando vídeo...")
+                        media_data = await evolution_client.get_media_base64(tenant_id, key)
                         if media_data.get("base64"):
-                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                            mime = media_data.get("mimetype") or media_mime_type or "video/mp4"
+                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
+                            print(f"✅ Vídeo baixado: {len(media_data.get('base64', ''))} chars")
                     except Exception as e:
                         print(f"⚠️ Erro ao baixar vídeo: {e}")
 
@@ -348,11 +357,14 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 media_mime_type = doc_msg.get("mimetype")
                 media_filename = doc_msg.get("fileName")
                 media_url = doc_msg.get("url") or doc_msg.get("directPath")
-                if not media_url and external_id:
+                if not media_url:
                     try:
-                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        print(f"📄 Baixando documento...")
+                        media_data = await evolution_client.get_media_base64(tenant_id, key)
                         if media_data.get("base64"):
-                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                            mime = media_data.get("mimetype") or media_mime_type or "application/octet-stream"
+                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
+                            print(f"✅ Documento baixado: {len(media_data.get('base64', ''))} chars")
                     except Exception as e:
                         print(f"⚠️ Erro ao baixar documento: {e}")
 
@@ -361,6 +373,14 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 sticker_msg = message_content.get("stickerMessage", {})
                 media_mime_type = sticker_msg.get("mimetype")
                 media_url = sticker_msg.get("url")
+                if not media_url:
+                    try:
+                        media_data = await evolution_client.get_media_base64(tenant_id, key)
+                        if media_data.get("base64"):
+                            mime = media_data.get("mimetype") or "image/webp"
+                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
+                    except Exception as e:
+                        print(f"⚠️ Erro ao baixar sticker: {e}")
 
             elif "locationMessage" in message_content:
                 msg_type = MessageType.LOCATION

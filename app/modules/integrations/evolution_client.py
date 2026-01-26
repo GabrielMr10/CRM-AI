@@ -398,40 +398,65 @@ class EvolutionAPIClient:
     async def get_media_base64(
         self,
         tenant_id: str,
-        message_id: str,
+        message_key: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Obtém mídia de uma mensagem em base64.
 
         Endpoint: POST /chat/getBase64FromMediaMessage/{instance}
+
+        Args:
+            tenant_id: ID do tenant
+            message_key: Objeto key da mensagem contendo id, remoteJid, fromMe
+
+        Returns:
+            {"base64": "...", "mimetype": "..."}
         """
         instance_name = self._get_instance_name(tenant_id)
 
+        # A Evolution API precisa da key completa da mensagem
         payload = {
             "message": {
                 "key": {
-                    "id": message_id
+                    "id": message_key.get("id"),
+                    "remoteJid": message_key.get("remoteJid"),
+                    "fromMe": message_key.get("fromMe", False)
                 }
             },
             "convertToMp4": False
         }
+
+        print(f"🔄 [Media] Baixando mídia: {payload}")
 
         try:
             result = await self._make_request(
                 "POST",
                 f"/chat/getBase64FromMediaMessage/{instance_name}",
                 payload,
-                timeout=60.0
+                timeout=120.0  # Timeout maior para vídeos grandes
             )
 
+            print(f"🔄 [Media] Resultado: success={result.get('success')}, has_base64={bool(result.get('data', {}).get('base64'))}")
+
             if result["success"]:
-                return result["data"]
+                data = result["data"]
+                # A resposta pode ter base64 diretamente ou dentro de outro objeto
+                base64_data = data.get("base64") or data.get("data", {}).get("base64")
+                mimetype = data.get("mimetype") or data.get("data", {}).get("mimetype")
+
+                if base64_data:
+                    return {
+                        "base64": base64_data,
+                        "mimetype": mimetype
+                    }
 
             logger.warning(f"Falha ao obter mídia: {result}")
             return {}
 
         except Exception as e:
             logger.error(f"Erro ao obter mídia: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
 
     async def get_profile_picture(

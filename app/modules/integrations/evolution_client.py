@@ -395,6 +395,76 @@ class EvolutionAPIClient:
 
         raise Exception(f"Erro ao enviar mensagem: {result['data']}")
 
+    async def get_media_base64(
+        self,
+        tenant_id: str,
+        message_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Obtém mídia de uma mensagem em base64.
+
+        Endpoint: POST /chat/getBase64FromMediaMessage/{instance}
+        """
+        instance_name = self._get_instance_name(tenant_id)
+
+        payload = {
+            "message": {
+                "key": {
+                    "id": message_id
+                }
+            },
+            "convertToMp4": False
+        }
+
+        try:
+            result = await self._make_request(
+                "POST",
+                f"/chat/getBase64FromMediaMessage/{instance_name}",
+                payload,
+                timeout=60.0
+            )
+
+            if result["success"]:
+                return result["data"]
+
+            logger.warning(f"Falha ao obter mídia: {result}")
+            return {}
+
+        except Exception as e:
+            logger.error(f"Erro ao obter mídia: {e}")
+            return {}
+
+    async def get_profile_picture(
+        self,
+        tenant_id: str,
+        phone_number: str,
+    ) -> Optional[str]:
+        """
+        Obtém a foto de perfil de um contato do WhatsApp.
+
+        Endpoint: GET /chat/fetchProfilePictureUrl/{instance}?number={phone}
+        """
+        instance_name = self._get_instance_name(tenant_id)
+
+        try:
+            result = await self._make_request(
+                "GET",
+                f"/chat/fetchProfilePictureUrl/{instance_name}?number={phone_number}",
+                timeout=15.0
+            )
+
+            if result["success"]:
+                data = result["data"]
+                picture_url = data.get("profilePictureUrl") or data.get("picture") or data.get("url")
+                if picture_url and picture_url != "null":
+                    return picture_url
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Não foi possível obter foto de perfil de {phone_number}: {e}")
+            return None
+
 
 # Instância singleton
 evolution_client = EvolutionAPIClient()

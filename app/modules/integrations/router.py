@@ -294,33 +294,90 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 ""
             )
 
-            # Determina tipo de mensagem
+            # Determina tipo de mensagem e extrai mídia
             msg_type = MessageType.TEXT
             media_url = None
             media_mime_type = None
+            media_filename = None
+
+            # Importa o cliente Evolution para baixar mídia
+            from app.modules.integrations.evolution_client import evolution_client
 
             if "imageMessage" in message_content:
                 msg_type = MessageType.IMAGE
-                media_mime_type = message_content.get("imageMessage", {}).get("mimetype")
+                img_msg = message_content.get("imageMessage", {})
+                media_mime_type = img_msg.get("mimetype")
+                media_url = img_msg.get("url") or img_msg.get("directPath")
+                if not media_url and external_id:
+                    try:
+                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        if media_data.get("base64"):
+                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                    except Exception as e:
+                        print(f"⚠️ Erro ao baixar imagem: {e}")
+
             elif "audioMessage" in message_content:
                 msg_type = MessageType.AUDIO
-                media_mime_type = message_content.get("audioMessage", {}).get("mimetype")
+                audio_msg = message_content.get("audioMessage", {})
+                media_mime_type = audio_msg.get("mimetype")
+                media_url = audio_msg.get("url") or audio_msg.get("directPath")
+                if not media_url and external_id:
+                    try:
+                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        if media_data.get("base64"):
+                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                    except Exception as e:
+                        print(f"⚠️ Erro ao baixar áudio: {e}")
+
             elif "videoMessage" in message_content:
                 msg_type = MessageType.VIDEO
-                media_mime_type = message_content.get("videoMessage", {}).get("mimetype")
+                video_msg = message_content.get("videoMessage", {})
+                media_mime_type = video_msg.get("mimetype")
+                media_url = video_msg.get("url") or video_msg.get("directPath")
+                if not media_url and external_id:
+                    try:
+                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        if media_data.get("base64"):
+                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                    except Exception as e:
+                        print(f"⚠️ Erro ao baixar vídeo: {e}")
+
             elif "documentMessage" in message_content:
                 msg_type = MessageType.DOCUMENT
-                media_mime_type = message_content.get("documentMessage", {}).get("mimetype")
+                doc_msg = message_content.get("documentMessage", {})
+                media_mime_type = doc_msg.get("mimetype")
+                media_filename = doc_msg.get("fileName")
+                media_url = doc_msg.get("url") or doc_msg.get("directPath")
+                if not media_url and external_id:
+                    try:
+                        media_data = await evolution_client.get_media_base64(tenant_id, external_id)
+                        if media_data.get("base64"):
+                            media_url = f"data:{media_mime_type};base64,{media_data.get('base64')}"
+                    except Exception as e:
+                        print(f"⚠️ Erro ao baixar documento: {e}")
+
             elif "stickerMessage" in message_content:
                 msg_type = MessageType.STICKER
+                sticker_msg = message_content.get("stickerMessage", {})
+                media_mime_type = sticker_msg.get("mimetype")
+                media_url = sticker_msg.get("url")
+
             elif "locationMessage" in message_content:
                 msg_type = MessageType.LOCATION
                 loc = message_content.get("locationMessage", {})
                 content = f"Localização: {loc.get('degreesLatitude')}, {loc.get('degreesLongitude')}"
+
             elif "contactMessage" in message_content:
                 msg_type = MessageType.CONTACT
-                contact = message_content.get("contactMessage", {})
-                content = f"Contato: {contact.get('displayName', 'Desconhecido')}"
+                contact_msg = message_content.get("contactMessage", {})
+                content = f"Contato: {contact_msg.get('displayName', 'Desconhecido')}"
+
+            # Se é mídia mas não tem conteúdo de texto
+            if msg_type in [MessageType.IMAGE, MessageType.AUDIO, MessageType.VIDEO, MessageType.DOCUMENT, MessageType.STICKER]:
+                if not content:
+                    content = f"[{msg_type.value}]" if not media_url else ""
+
+            print(f"📩 [Evolution] Tipo: {msg_type.value}, MediaURL: {'Sim' if media_url else 'Não'}, MimeType: {media_mime_type}")
 
             # Extrai nome do contato
             contact_name = msg.get("pushName", "")
@@ -336,8 +393,6 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
             else:
                 whatsapp_timestamp = datetime.now(timezone.utc)
 
-            print(f"📩 [Evolution] Telefone: {phone}, Conteúdo: {content[:50]}..., Tipo: {msg_type}")
-
             # Salva no banco de dados
             db = SessionLocal()
             try:
@@ -352,6 +407,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                     contact_name=contact_name,
                     media_url=media_url,
                     media_mime_type=media_mime_type,
+                    media_filename=media_filename,
                     whatsapp_timestamp=whatsapp_timestamp,
                     raw_data=msg,
                 )
@@ -364,6 +420,17 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
 
                 logger.info(f"[Tenant {tenant_id}] Mensagem salva: {message.id}")
 
+                # Busca foto de perfil se ainda não tiver
+                if not conversation.contact_avatar_url:
+                    try:
+                        avatar_url = await evolution_client.get_profile_picture(tenant_id, phone)
+                        if avatar_url:
+                            conversation.contact_avatar_url = avatar_url
+                            db.commit()
+                            print(f"📸 Foto de perfil atualizada para {phone}")
+                    except Exception as e:
+                        print(f"⚠️ Erro ao buscar foto de perfil: {e}")
+
                 # Notifica via WebSocket
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
@@ -373,6 +440,8 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                         "content": message.content,
                         "direction": "inbound",
                         "message_type": msg_type.value,
+                        "media_url": media_url,
+                        "media_mime_type": media_mime_type,
                         "created_at": message.created_at.isoformat(),
                         "sender_name": contact_name or phone,
                         "sender_phone": phone,

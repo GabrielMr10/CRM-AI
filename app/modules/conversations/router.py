@@ -125,7 +125,7 @@ def get_messages(
     status_code=status.HTTP_201_CREATED,
     summary="Enviar mensagem",
 )
-def send_message(
+async def send_message(
     conversation_id: uuid.UUID,
     data: MessageCreate,
     tenant: CurrentTenant,
@@ -133,18 +133,40 @@ def send_message(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Registra mensagem enviada.
-    
-    Nota: A integração real com Z-API será feita via módulo integrations.
-    Este endpoint apenas registra a mensagem no histórico.
+    Envia mensagem via WhatsApp (Evolution API) e salva no histórico.
     """
-    return ConversationService.send_message(
+    from app.modules.integrations.evolution_client import evolution_client
+
+    # 1. Busca a conversa para obter o telefone
+    conversation = ConversationService.get_or_404(db, conversation_id, tenant.id)
+
+    # 2. Envia para o WhatsApp via Evolution API
+    external_id = None
+    try:
+        evolution_result = await evolution_client.send_text_message(
+            tenant_id=str(tenant.id),
+            phone_number=conversation.phone,
+            message=data.content
+        )
+        external_id = evolution_result.get("key", {}).get("id")
+        print(f"✅ [WhatsApp] Mensagem enviada: {external_id}")
+    except Exception as e:
+        print(f"❌ [WhatsApp] Erro ao enviar: {e}")
+        import traceback
+        traceback.print_exc()
+        # Não falha o endpoint - ainda salva a mensagem localmente
+
+    # 3. Salva a mensagem no banco de dados
+    message = ConversationService.send_message(
         db,
         conversation_id=conversation_id,
         tenant_id=tenant.id,
         data=data,
         sent_by=current_user,
+        external_id=external_id,
     )
+
+    return message
 
 
 @router.post(

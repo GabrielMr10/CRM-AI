@@ -137,29 +137,17 @@ async def evolution_webhook(
     - MESSAGES_UPSERT: Nova mensagem recebida
     - MESSAGES_UPDATE: Status de mensagem atualizado
     """
-    # DEBUG: Log completo do payload recebido
-    print(f"")
-    print(f"{'='*60}")
-    print(f"📥 [WEBHOOK RECEBIDO]")
-    print(f"   Evento: {payload.event}")
-    print(f"   Instância: {payload.instance}")
-    print(f"   Data keys: {list(payload.data.keys()) if payload.data else 'None'}")
-    print(f"{'='*60}")
-
     logger.info(f"[Evolution Webhook] Evento: {payload.event}, Instância: {payload.instance}")
 
     # Extrai tenant_id do nome da instância (tenant_UUID)
     instance_name = payload.instance
     if instance_name.startswith("tenant_"):
         tenant_id = instance_name.replace("tenant_", "")
-        print(f"✅ Tenant ID extraído: {tenant_id}")
     else:
-        print(f"❌ Instância não segue padrão tenant_: {instance_name}")
         logger.warning(f"Instância não segue padrão tenant_: {instance_name}")
         return {"status": "ignored"}
 
     # Processa eventos em background
-    print(f"🚀 Disparando processamento em background para evento: {payload.event}")
     background_tasks.add_task(
         process_evolution_event,
         tenant_id=tenant_id,
@@ -174,18 +162,8 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
     """Processa eventos da Evolution API e notifica via WebSocket."""
     from app.core.websocket_manager import ws_manager
 
-    print(f"")
-    print(f"🔄 [PROCESSANDO EVENTO]")
-    print(f"   Tenant: {tenant_id}")
-    print(f"   Evento: {event}")
-    print(f"   Data: {str(data)[:200]}...")  # Primeiros 200 chars
-
-    # Normaliza o nome do evento (Evolution envia lowercase com ponto)
-    event_normalized = event.upper().replace(".", "_")
-    print(f"   Evento normalizado: {event_normalized}")
-
     try:
-        if event_normalized == "CONNECTION_UPDATE":
+        if event == "CONNECTION_UPDATE":
             # Notifica frontend sobre mudança de conexão
             state = data.get("state", "unknown")
             await ws_manager.send_to_tenant(tenant_id, {
@@ -195,7 +173,7 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] Conexão WhatsApp: {state}")
 
-        elif event_normalized == "QRCODE_UPDATED":
+        elif event == "QRCODE_UPDATED":
             # Notifica frontend com novo QR Code
             qrcode_data = data.get("qrcode", {})
             await ws_manager.send_to_tenant(tenant_id, {
@@ -205,12 +183,11 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] QR Code atualizado")
 
-        elif event_normalized == "MESSAGES_UPSERT":
+        elif event == "MESSAGES_UPSERT":
             # Nova mensagem recebida - processa e salva no banco
-            print(f"📩 Processando MESSAGES_UPSERT...")
             await _process_messages_upsert(tenant_id, data)
 
-        elif event_normalized == "MESSAGES_UPDATE":
+        elif event == "MESSAGES_UPDATE":
             # Atualização de status de mensagem (delivered, read)
             # TODO: Atualizar status no banco e notificar
             logger.info(f"[Tenant {tenant_id}] Status de mensagem atualizado")
@@ -219,21 +196,14 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
                 "data": data
             })
 
-        elif event_normalized == "SEND_MESSAGE":
+        elif event == "SEND_MESSAGE":
             # Confirmação de mensagem enviada
             logger.debug(f"[Tenant {tenant_id}] Mensagem enviada confirmada")
 
         else:
-            print(f"⚠️ [Tenant {tenant_id}] Evento não tratado: {event} (normalizado: {event_normalized})")
             logger.debug(f"[Tenant {tenant_id}] Evento não tratado: {event}")
 
     except Exception as e:
-        print(f"")
-        print(f"❌ [ERRO NO PROCESSAMENTO]")
-        print(f"   Evento: {event}")
-        print(f"   Erro: {e}")
-        import traceback
-        traceback.print_exc()
         logger.error(f"Erro ao processar evento {event}: {e}")
 
 
@@ -251,10 +221,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
     from app.modules.conversations.models import MessageType, MessageDirection
     from app.modules.conversations.exceptions import DuplicateMessageError
 
-    print(f"📩 [Evolution MESSAGES_UPSERT] Processando...")
-    print(f"   Data type: {type(data)}")
-    print(f"   Data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
-    print(f"   Data: {str(data)[:500]}")
+    print(f"📩 [Evolution MESSAGES_UPSERT] Processando: {data}")
 
     try:
         # Evolution API envia mensagens em diferentes formatos
@@ -294,141 +261,89 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 ""
             )
 
-            # Determina tipo de mensagem e extrai mídia
+            # Determina tipo de mensagem e extrai dados de mídia
             msg_type = MessageType.TEXT
             media_url = None
             media_mime_type = None
-            media_filename = None
-
-            # Importa o cliente Evolution para baixar mídia
-            from app.modules.integrations.evolution_client import evolution_client
+            media_key = None
+            direct_path = None
+            temp_url = None
 
             if "imageMessage" in message_content:
                 msg_type = MessageType.IMAGE
-                img_msg = message_content.get("imageMessage", {})
-                media_mime_type = img_msg.get("mimetype") or "image/jpeg"
-
-                # SEMPRE baixa como base64 (URL do WhatsApp é temporária)
-                print(f"🖼️ Baixando imagem como base64...")
-                try:
-                    media_data = await evolution_client.get_media_base64(tenant_id, key)
-                    if media_data.get("base64"):
-                        base64_content = media_data.get("base64")
-                        # Remove prefixo se já vier com ele
-                        if base64_content.startswith("data:"):
-                            media_url = base64_content
-                        else:
-                            media_url = f"data:{media_mime_type};base64,{base64_content}"
-                        print(f"✅ Imagem baixada: {len(base64_content)} chars")
-                    else:
-                        print(f"⚠️ Base64 vazio na resposta")
-                except Exception as e:
-                    print(f"❌ Erro ao baixar imagem: {e}")
-                    import traceback
-                    traceback.print_exc()
-
+                img_data = message_content.get("imageMessage", {})
+                media_mime_type = img_data.get("mimetype")
+                media_key = img_data.get("mediaKey")
+                direct_path = img_data.get("directPath")
+                temp_url = img_data.get("url")
             elif "audioMessage" in message_content:
                 msg_type = MessageType.AUDIO
-                audio_msg = message_content.get("audioMessage", {})
-                media_mime_type = audio_msg.get("mimetype") or "audio/ogg; codecs=opus"
-
-                print(f"🔊 Baixando áudio como base64...")
-                try:
-                    media_data = await evolution_client.get_media_base64(tenant_id, key)
-                    if media_data.get("base64"):
-                        base64_content = media_data.get("base64")
-                        if base64_content.startswith("data:"):
-                            media_url = base64_content
-                        else:
-                            media_url = f"data:{media_mime_type};base64,{base64_content}"
-                        print(f"✅ Áudio baixado: {len(base64_content)} chars")
-                    else:
-                        print(f"⚠️ Base64 vazio na resposta")
-                except Exception as e:
-                    print(f"❌ Erro ao baixar áudio: {e}")
-                    import traceback
-                    traceback.print_exc()
-
+                audio_data = message_content.get("audioMessage", {})
+                media_mime_type = audio_data.get("mimetype")
+                media_key = audio_data.get("mediaKey")
+                direct_path = audio_data.get("directPath")
+                temp_url = audio_data.get("url")
             elif "videoMessage" in message_content:
                 msg_type = MessageType.VIDEO
-                video_msg = message_content.get("videoMessage", {})
-                media_mime_type = video_msg.get("mimetype") or "video/mp4"
-
-                print(f"🎬 Baixando vídeo como base64...")
-                try:
-                    media_data = await evolution_client.get_media_base64(tenant_id, key)
-                    if media_data.get("base64"):
-                        base64_content = media_data.get("base64")
-                        if base64_content.startswith("data:"):
-                            media_url = base64_content
-                        else:
-                            media_url = f"data:{media_mime_type};base64,{base64_content}"
-                        print(f"✅ Vídeo baixado: {len(base64_content)} chars")
-                    else:
-                        print(f"⚠️ Base64 vazio na resposta")
-                except Exception as e:
-                    print(f"❌ Erro ao baixar vídeo: {e}")
-                    import traceback
-                    traceback.print_exc()
-
+                video_data = message_content.get("videoMessage", {})
+                media_mime_type = video_data.get("mimetype")
+                media_key = video_data.get("mediaKey")
+                direct_path = video_data.get("directPath")
+                temp_url = video_data.get("url")
             elif "documentMessage" in message_content:
                 msg_type = MessageType.DOCUMENT
-                doc_msg = message_content.get("documentMessage", {})
-                media_mime_type = doc_msg.get("mimetype") or "application/octet-stream"
-                media_filename = doc_msg.get("fileName") or "documento"
-
-                print(f"📄 Baixando documento como base64...")
-                try:
-                    media_data = await evolution_client.get_media_base64(tenant_id, key)
-                    if media_data.get("base64"):
-                        base64_content = media_data.get("base64")
-                        if base64_content.startswith("data:"):
-                            media_url = base64_content
-                        else:
-                            media_url = f"data:{media_mime_type};base64,{base64_content}"
-                        print(f"✅ Documento baixado: {len(base64_content)} chars")
-                    else:
-                        print(f"⚠️ Base64 vazio na resposta")
-                except Exception as e:
-                    print(f"❌ Erro ao baixar documento: {e}")
-                    import traceback
-                    traceback.print_exc()
-
+                doc_data = message_content.get("documentMessage", {})
+                media_mime_type = doc_data.get("mimetype")
+                media_key = doc_data.get("mediaKey")
+                direct_path = doc_data.get("directPath")
+                temp_url = doc_data.get("url")
+                # Usa nome do arquivo como conteúdo se não tiver caption
+                if not content:
+                    content = doc_data.get("fileName", "Documento")
             elif "stickerMessage" in message_content:
                 msg_type = MessageType.STICKER
-                sticker_msg = message_content.get("stickerMessage", {})
-                media_mime_type = sticker_msg.get("mimetype") or "image/webp"
-
-                try:
-                    media_data = await evolution_client.get_media_base64(tenant_id, key)
-                    if media_data.get("base64"):
-                        base64_content = media_data.get("base64")
-                        if base64_content.startswith("data:"):
-                            media_url = base64_content
-                        else:
-                            media_url = f"data:{media_mime_type};base64,{base64_content}"
-                except Exception as e:
-                    print(f"⚠️ Erro ao baixar sticker: {e}")
-
+                sticker_data = message_content.get("stickerMessage", {})
+                media_mime_type = sticker_data.get("mimetype", "image/webp")
+                media_key = sticker_data.get("mediaKey")
+                direct_path = sticker_data.get("directPath")
+                temp_url = sticker_data.get("url")
             elif "locationMessage" in message_content:
                 msg_type = MessageType.LOCATION
                 loc = message_content.get("locationMessage", {})
                 content = f"Localização: {loc.get('degreesLatitude')}, {loc.get('degreesLongitude')}"
-
             elif "contactMessage" in message_content:
                 msg_type = MessageType.CONTACT
-                contact_msg = message_content.get("contactMessage", {})
-                content = f"Contato: {contact_msg.get('displayName', 'Desconhecido')}"
+                contact = message_content.get("contactMessage", {})
+                content = f"Contato: {contact.get('displayName', 'Desconhecido')}"
 
-            # Define conteúdo padrão se for mídia sem legenda
+            # Se é mídia, faz download em base64
             if msg_type in [MessageType.IMAGE, MessageType.AUDIO, MessageType.VIDEO, MessageType.DOCUMENT, MessageType.STICKER]:
-                if not content:
-                    if media_url:
-                        content = ""  # Mídia baixada com sucesso, não precisa placeholder
+                print(f"📥 [Evolution] Baixando mídia tipo {msg_type.value}...")
+                from .evolution_client import evolution_client
+                
+                try:
+                    base64_content = await evolution_client.get_media_base64(
+                        tenant_id=tenant_id,
+                        message_id=external_id,
+                        media_key=media_key,
+                        direct_path=direct_path,
+                        url=temp_url,
+                        mimetype=media_mime_type
+                    )
+                    
+                    if base64_content:
+                        # Formata como data URI completo
+                        mime = media_mime_type or "application/octet-stream"
+                        media_url = f"data:{mime};base64,{base64_content}"
+                        print(f"✅ [Evolution] Mídia baixada! Tamanho base64: {len(base64_content)} chars")
                     else:
-                        content = f"[{msg_type.value}]"  # Falhou, mostra placeholder
-
-            print(f"📩 [Evolution] Tipo: {msg_type.value}, MediaURL: {'Sim (' + str(len(media_url)) + ' chars)' if media_url else 'Não'}, MimeType: {media_mime_type}")
+                        print(f"⚠️ [Evolution] Não foi possível baixar mídia, salvando placeholder")
+                        if not content:
+                            content = f"[{msg_type.value}]"
+                except Exception as e:
+                    print(f"❌ [Evolution] Erro ao baixar mídia: {e}")
+                    if not content:
+                        content = f"[{msg_type.value}]"
 
             # Extrai nome do contato
             contact_name = msg.get("pushName", "")
@@ -444,6 +359,8 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
             else:
                 whatsapp_timestamp = datetime.now(timezone.utc)
 
+            print(f"📩 [Evolution] Telefone: {phone}, Conteúdo: {content[:50]}..., Tipo: {msg_type}")
+
             # Salva no banco de dados
             db = SessionLocal()
             try:
@@ -458,7 +375,6 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                     contact_name=contact_name,
                     media_url=media_url,
                     media_mime_type=media_mime_type,
-                    media_filename=media_filename,
                     whatsapp_timestamp=whatsapp_timestamp,
                     raw_data=msg,
                 )
@@ -471,17 +387,6 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
 
                 logger.info(f"[Tenant {tenant_id}] Mensagem salva: {message.id}")
 
-                # Busca foto de perfil se ainda não tiver
-                if not conversation.contact_avatar_url:
-                    try:
-                        avatar_url = await evolution_client.get_profile_picture(tenant_id, phone)
-                        if avatar_url:
-                            conversation.contact_avatar_url = avatar_url
-                            db.commit()
-                            print(f"📸 Foto de perfil atualizada para {phone}")
-                    except Exception as e:
-                        print(f"⚠️ Erro ao buscar foto de perfil: {e}")
-
                 # Notifica via WebSocket
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
@@ -491,12 +396,12 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                         "content": message.content,
                         "direction": "inbound",
                         "message_type": msg_type.value,
-                        "media_url": media_url,
-                        "media_mime_type": media_mime_type,
                         "created_at": message.created_at.isoformat(),
                         "sender_name": contact_name or phone,
                         "sender_phone": phone,
                         "external_id": external_id,
+                        "media_url": message.media_url,
+                        "media_mime_type": message.media_mime_type,
                     }
                 )
 

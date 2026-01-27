@@ -398,106 +398,91 @@ class EvolutionAPIClient:
     async def get_media_base64(
         self,
         tenant_id: str,
-        message_key: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        message_id: str,
+        media_key: Optional[str] = None,
+        direct_path: Optional[str] = None,
+        url: Optional[str] = None,
+        mimetype: Optional[str] = None
+    ) -> Optional[str]:
         """
-        Obtém mídia de uma mensagem em base64.
-
-        Endpoint: POST /chat/getBase64FromMediaMessage/{instance}
-
+        Faz download de mídia da Evolution API e retorna em base64.
+        
         Args:
             tenant_id: ID do tenant
-            message_key: Objeto key da mensagem contendo id, remoteJid, fromMe
-
+            message_id: ID da mensagem que contém a mídia
+            media_key: Chave de mídia (para download direto)
+            direct_path: Caminho direto do WhatsApp
+            url: URL temporária da mídia
+            mimetype: Tipo MIME do arquivo
+            
         Returns:
-            {"base64": "...", "mimetype": "..."}
+            String base64 da mídia ou None se falhar
         """
         instance_name = self._get_instance_name(tenant_id)
-
-        # A Evolution API precisa da key completa da mensagem
-        payload = {
-            "message": {
-                "key": {
-                    "id": message_key.get("id"),
-                    "remoteJid": message_key.get("remoteJid"),
-                    "fromMe": message_key.get("fromMe", False)
-                }
-            },
-            "convertToMp4": False
-        }
-
-        print(f"🔄 [Media] Request payload: {payload}")
-
+        
         try:
+            # Tenta primeiro o endpoint getBase64FromMediaMessage
+            payload = {
+                "message": {
+                    "key": {
+                        "id": message_id
+                    }
+                },
+                "convertToMp4": False
+            }
+            
             result = await self._make_request(
                 "POST",
                 f"/chat/getBase64FromMediaMessage/{instance_name}",
                 payload,
-                timeout=120.0  # Timeout maior para vídeos grandes
+                timeout=60.0  # Mídia pode demorar
             )
-
-            print(f"🔄 [Media] Response status: {result.get('status_code')}")
-            print(f"🔄 [Media] Response success: {result.get('success')}")
-
-            data = result.get("data", {})
-            print(f"🔄 [Media] Response data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-
-            # Mostra preview do base64 se existir
-            if isinstance(data, dict) and data.get("base64"):
-                print(f"🔄 [Media] Base64 encontrado: {len(data.get('base64'))} chars")
-            else:
-                print(f"🔄 [Media] Base64 NÃO encontrado. Data: {str(data)[:500]}")
-
-            if result["success"]:
-                # A resposta pode ter base64 diretamente ou dentro de outro objeto
-                base64_data = data.get("base64") or data.get("data", {}).get("base64") if isinstance(data, dict) else None
-                mimetype = data.get("mimetype") or data.get("data", {}).get("mimetype") if isinstance(data, dict) else None
-
-                if base64_data:
-                    return {
-                        "base64": base64_data,
-                        "mimetype": mimetype
-                    }
-
-            logger.warning(f"Falha ao obter mídia: status={result.get('status_code')}")
-            return {}
-
-        except Exception as e:
-            print(f"❌ [Media] Exception: {e}")
-            import traceback
-            traceback.print_exc()
-            return {}
-
-    async def get_profile_picture(
-        self,
-        tenant_id: str,
-        phone_number: str,
-    ) -> Optional[str]:
-        """
-        Obtém a foto de perfil de um contato do WhatsApp.
-
-        Endpoint: GET /chat/fetchProfilePictureUrl/{instance}?number={phone}
-        """
-        instance_name = self._get_instance_name(tenant_id)
-
-        try:
-            result = await self._make_request(
-                "GET",
-                f"/chat/fetchProfilePictureUrl/{instance_name}?number={phone_number}",
-                timeout=15.0
-            )
-
-            if result["success"]:
+            
+            if result["success"] and result.get("data"):
                 data = result["data"]
-                picture_url = data.get("profilePictureUrl") or data.get("picture") or data.get("url")
-                if picture_url and picture_url != "null":
-                    return picture_url
-
+                base64_content = data.get("base64")
+                if base64_content:
+                    logger.info(f"[Evolution] Mídia baixada com sucesso: {message_id[:20]}...")
+                    return base64_content
+            
+            logger.warning(f"[Evolution] Endpoint getBase64 retornou vazio: {result}")
+            
+            # Fallback: tenta baixar direto da URL se disponível
+            if url:
+                return await self._download_media_from_url(url)
+                
             return None
-
+            
         except Exception as e:
-            logger.debug(f"Não foi possível obter foto de perfil de {phone_number}: {e}")
+            logger.error(f"[Evolution] Erro ao baixar mídia: {e}")
+            
+            # Último fallback: tenta URL direta
+            if url:
+                try:
+                    return await self._download_media_from_url(url)
+                except Exception as e2:
+                    logger.error(f"[Evolution] Fallback URL também falhou: {e2}")
+            
             return None
+    
+    async def _download_media_from_url(self, url: str) -> Optional[str]:
+        """Baixa mídia de URL e converte para base64."""
+        import base64
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.get(url)
+                if response.status_code == 200:
+                    content = response.content
+                    base64_content = base64.b64encode(content).decode('utf-8')
+                    logger.info(f"[Evolution] Mídia baixada via URL: {len(content)} bytes")
+                    return base64_content
+                else:
+                    logger.warning(f"[Evolution] URL retornou status {response.status_code}")
+            except Exception as e:
+                logger.error(f"[Evolution] Erro ao baixar URL: {e}")
+        
+        return None
 
 
 # Instância singleton

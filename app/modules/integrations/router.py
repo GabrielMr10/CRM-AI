@@ -306,81 +306,109 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
             if "imageMessage" in message_content:
                 msg_type = MessageType.IMAGE
                 img_msg = message_content.get("imageMessage", {})
-                media_mime_type = img_msg.get("mimetype")
-                media_url = img_msg.get("url") or img_msg.get("directPath")
-                if not media_url:
-                    try:
-                        print(f"🖼️ Baixando imagem...")
-                        media_data = await evolution_client.get_media_base64(tenant_id, key)
-                        if media_data.get("base64"):
-                            mime = media_data.get("mimetype") or media_mime_type or "image/jpeg"
-                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
-                            print(f"✅ Imagem baixada: {len(media_data.get('base64', ''))} chars")
-                    except Exception as e:
-                        print(f"⚠️ Erro ao baixar imagem: {e}")
+                media_mime_type = img_msg.get("mimetype") or "image/jpeg"
+
+                # SEMPRE baixa como base64 (URL do WhatsApp é temporária)
+                print(f"🖼️ Baixando imagem como base64...")
+                try:
+                    media_data = await evolution_client.get_media_base64(tenant_id, key)
+                    if media_data.get("base64"):
+                        base64_content = media_data.get("base64")
+                        # Remove prefixo se já vier com ele
+                        if base64_content.startswith("data:"):
+                            media_url = base64_content
+                        else:
+                            media_url = f"data:{media_mime_type};base64,{base64_content}"
+                        print(f"✅ Imagem baixada: {len(base64_content)} chars")
+                    else:
+                        print(f"⚠️ Base64 vazio na resposta")
+                except Exception as e:
+                    print(f"❌ Erro ao baixar imagem: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             elif "audioMessage" in message_content:
                 msg_type = MessageType.AUDIO
                 audio_msg = message_content.get("audioMessage", {})
-                media_mime_type = audio_msg.get("mimetype")
-                media_url = audio_msg.get("url") or audio_msg.get("directPath")
-                if not media_url:
-                    try:
-                        print(f"🔊 Baixando áudio...")
-                        media_data = await evolution_client.get_media_base64(tenant_id, key)
-                        if media_data.get("base64"):
-                            mime = media_data.get("mimetype") or media_mime_type or "audio/ogg"
-                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
-                            print(f"✅ Áudio baixado: {len(media_data.get('base64', ''))} chars")
-                    except Exception as e:
-                        print(f"⚠️ Erro ao baixar áudio: {e}")
+                media_mime_type = audio_msg.get("mimetype") or "audio/ogg; codecs=opus"
+
+                print(f"🔊 Baixando áudio como base64...")
+                try:
+                    media_data = await evolution_client.get_media_base64(tenant_id, key)
+                    if media_data.get("base64"):
+                        base64_content = media_data.get("base64")
+                        if base64_content.startswith("data:"):
+                            media_url = base64_content
+                        else:
+                            media_url = f"data:{media_mime_type};base64,{base64_content}"
+                        print(f"✅ Áudio baixado: {len(base64_content)} chars")
+                    else:
+                        print(f"⚠️ Base64 vazio na resposta")
+                except Exception as e:
+                    print(f"❌ Erro ao baixar áudio: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             elif "videoMessage" in message_content:
                 msg_type = MessageType.VIDEO
                 video_msg = message_content.get("videoMessage", {})
-                media_mime_type = video_msg.get("mimetype")
-                media_url = video_msg.get("url") or video_msg.get("directPath")
-                if not media_url:
-                    try:
-                        print(f"🎬 Baixando vídeo...")
-                        media_data = await evolution_client.get_media_base64(tenant_id, key)
-                        if media_data.get("base64"):
-                            mime = media_data.get("mimetype") or media_mime_type or "video/mp4"
-                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
-                            print(f"✅ Vídeo baixado: {len(media_data.get('base64', ''))} chars")
-                    except Exception as e:
-                        print(f"⚠️ Erro ao baixar vídeo: {e}")
+                media_mime_type = video_msg.get("mimetype") or "video/mp4"
+
+                print(f"🎬 Baixando vídeo como base64...")
+                try:
+                    media_data = await evolution_client.get_media_base64(tenant_id, key)
+                    if media_data.get("base64"):
+                        base64_content = media_data.get("base64")
+                        if base64_content.startswith("data:"):
+                            media_url = base64_content
+                        else:
+                            media_url = f"data:{media_mime_type};base64,{base64_content}"
+                        print(f"✅ Vídeo baixado: {len(base64_content)} chars")
+                    else:
+                        print(f"⚠️ Base64 vazio na resposta")
+                except Exception as e:
+                    print(f"❌ Erro ao baixar vídeo: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             elif "documentMessage" in message_content:
                 msg_type = MessageType.DOCUMENT
                 doc_msg = message_content.get("documentMessage", {})
-                media_mime_type = doc_msg.get("mimetype")
-                media_filename = doc_msg.get("fileName")
-                media_url = doc_msg.get("url") or doc_msg.get("directPath")
-                if not media_url:
-                    try:
-                        print(f"📄 Baixando documento...")
-                        media_data = await evolution_client.get_media_base64(tenant_id, key)
-                        if media_data.get("base64"):
-                            mime = media_data.get("mimetype") or media_mime_type or "application/octet-stream"
-                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
-                            print(f"✅ Documento baixado: {len(media_data.get('base64', ''))} chars")
-                    except Exception as e:
-                        print(f"⚠️ Erro ao baixar documento: {e}")
+                media_mime_type = doc_msg.get("mimetype") or "application/octet-stream"
+                media_filename = doc_msg.get("fileName") or "documento"
+
+                print(f"📄 Baixando documento como base64...")
+                try:
+                    media_data = await evolution_client.get_media_base64(tenant_id, key)
+                    if media_data.get("base64"):
+                        base64_content = media_data.get("base64")
+                        if base64_content.startswith("data:"):
+                            media_url = base64_content
+                        else:
+                            media_url = f"data:{media_mime_type};base64,{base64_content}"
+                        print(f"✅ Documento baixado: {len(base64_content)} chars")
+                    else:
+                        print(f"⚠️ Base64 vazio na resposta")
+                except Exception as e:
+                    print(f"❌ Erro ao baixar documento: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             elif "stickerMessage" in message_content:
                 msg_type = MessageType.STICKER
                 sticker_msg = message_content.get("stickerMessage", {})
-                media_mime_type = sticker_msg.get("mimetype")
-                media_url = sticker_msg.get("url")
-                if not media_url:
-                    try:
-                        media_data = await evolution_client.get_media_base64(tenant_id, key)
-                        if media_data.get("base64"):
-                            mime = media_data.get("mimetype") or "image/webp"
-                            media_url = f"data:{mime};base64,{media_data.get('base64')}"
-                    except Exception as e:
-                        print(f"⚠️ Erro ao baixar sticker: {e}")
+                media_mime_type = sticker_msg.get("mimetype") or "image/webp"
+
+                try:
+                    media_data = await evolution_client.get_media_base64(tenant_id, key)
+                    if media_data.get("base64"):
+                        base64_content = media_data.get("base64")
+                        if base64_content.startswith("data:"):
+                            media_url = base64_content
+                        else:
+                            media_url = f"data:{media_mime_type};base64,{base64_content}"
+                except Exception as e:
+                    print(f"⚠️ Erro ao baixar sticker: {e}")
 
             elif "locationMessage" in message_content:
                 msg_type = MessageType.LOCATION
@@ -392,12 +420,15 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                 contact_msg = message_content.get("contactMessage", {})
                 content = f"Contato: {contact_msg.get('displayName', 'Desconhecido')}"
 
-            # Se é mídia mas não tem conteúdo de texto
+            # Define conteúdo padrão se for mídia sem legenda
             if msg_type in [MessageType.IMAGE, MessageType.AUDIO, MessageType.VIDEO, MessageType.DOCUMENT, MessageType.STICKER]:
                 if not content:
-                    content = f"[{msg_type.value}]" if not media_url else ""
+                    if media_url:
+                        content = ""  # Mídia baixada com sucesso, não precisa placeholder
+                    else:
+                        content = f"[{msg_type.value}]"  # Falhou, mostra placeholder
 
-            print(f"📩 [Evolution] Tipo: {msg_type.value}, MediaURL: {'Sim' if media_url else 'Não'}, MimeType: {media_mime_type}")
+            print(f"📩 [Evolution] Tipo: {msg_type.value}, MediaURL: {'Sim (' + str(len(media_url)) + ' chars)' if media_url else 'Não'}, MimeType: {media_mime_type}")
 
             # Extrai nome do contato
             contact_name = msg.get("pushName", "")

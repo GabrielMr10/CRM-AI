@@ -426,7 +426,7 @@ class EvolutionAPIClient:
             "convertToMp4": False
         }
 
-        print(f"🔄 [Media] Baixando mídia: {payload}")
+        print(f"🔄 [Media] Request payload: {payload}")
 
         try:
             result = await self._make_request(
@@ -436,13 +436,22 @@ class EvolutionAPIClient:
                 timeout=120.0  # Timeout maior para vídeos grandes
             )
 
-            print(f"🔄 [Media] Resultado: success={result.get('success')}, has_base64={bool(result.get('data', {}).get('base64'))}")
+            print(f"🔄 [Media] Response status: {result.get('status_code')}")
+            print(f"🔄 [Media] Response success: {result.get('success')}")
+
+            data = result.get("data", {})
+            print(f"🔄 [Media] Response data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+
+            # Mostra preview do base64 se existir
+            if isinstance(data, dict) and data.get("base64"):
+                print(f"🔄 [Media] Base64 encontrado: {len(data.get('base64'))} chars")
+            else:
+                print(f"🔄 [Media] Base64 NÃO encontrado. Data: {str(data)[:500]}")
 
             if result["success"]:
-                data = result["data"]
                 # A resposta pode ter base64 diretamente ou dentro de outro objeto
-                base64_data = data.get("base64") or data.get("data", {}).get("base64")
-                mimetype = data.get("mimetype") or data.get("data", {}).get("mimetype")
+                base64_data = data.get("base64") or data.get("data", {}).get("base64") if isinstance(data, dict) else None
+                mimetype = data.get("mimetype") or data.get("data", {}).get("mimetype") if isinstance(data, dict) else None
 
                 if base64_data:
                     return {
@@ -450,11 +459,11 @@ class EvolutionAPIClient:
                         "mimetype": mimetype
                     }
 
-            logger.warning(f"Falha ao obter mídia: {result}")
+            logger.warning(f"Falha ao obter mídia: status={result.get('status_code')}")
             return {}
 
         except Exception as e:
-            logger.error(f"Erro ao obter mídia: {e}")
+            print(f"❌ [Media] Exception: {e}")
             import traceback
             traceback.print_exc()
             return {}

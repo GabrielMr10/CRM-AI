@@ -406,22 +406,15 @@ class EvolutionAPIClient:
     ) -> Optional[str]:
         """
         Faz download de mídia da Evolution API e retorna em base64.
-        
-        Args:
-            tenant_id: ID do tenant
-            message_id: ID da mensagem que contém a mídia
-            media_key: Chave de mídia (para download direto)
-            direct_path: Caminho direto do WhatsApp
-            url: URL temporária da mídia
-            mimetype: Tipo MIME do arquivo
-            
-        Returns:
-            String base64 da mídia ou None se falhar
+        Tenta múltiplos métodos para garantir o download.
         """
+        import base64
         instance_name = self._get_instance_name(tenant_id)
-        
+
+        print(f"🔍 [Evolution] Tentando baixar mídia: message_id={message_id}, url={url[:50] if url else 'None'}...")
+
+        # MÉTODO 1: Tenta endpoint getBase64FromMediaMessage (Evolution API v2)
         try:
-            # Tenta primeiro o endpoint getBase64FromMediaMessage
             payload = {
                 "message": {
                     "key": {
@@ -430,58 +423,94 @@ class EvolutionAPIClient:
                 },
                 "convertToMp4": False
             }
-            
+
+            print(f"📤 [Evolution] Chamando getBase64FromMediaMessage...")
             result = await self._make_request(
                 "POST",
                 f"/chat/getBase64FromMediaMessage/{instance_name}",
                 payload,
-                timeout=60.0  # Mídia pode demorar
+                timeout=60.0
             )
-            
+
+            print(f"📥 [Evolution] Resposta getBase64: status={result.get('status_code')}, success={result.get('success')}")
+
             if result["success"] and result.get("data"):
                 data = result["data"]
                 base64_content = data.get("base64")
                 if base64_content:
-                    logger.info(f"[Evolution] Mídia baixada com sucesso: {message_id[:20]}...")
-                    return base64_content
-            
-            logger.warning(f"[Evolution] Endpoint getBase64 retornou vazio: {result}")
-            
-            # Fallback: tenta baixar direto da URL se disponível
-            if url:
-                return await self._download_media_from_url(url)
-                
-            return None
-            
-        except Exception as e:
-            logger.error(f"[Evolution] Erro ao baixar mídia: {e}")
-            
-            # Último fallback: tenta URL direta
-            if url:
-                try:
-                    return await self._download_media_from_url(url)
-                except Exception as e2:
-                    logger.error(f"[Evolution] Fallback URL também falhou: {e2}")
-            
-            return None
-    
-    async def _download_media_from_url(self, url: str) -> Optional[str]:
-        """Baixa mídia de URL e converte para base64."""
-        import base64
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.get(url)
-                if response.status_code == 200:
-                    content = response.content
-                    base64_content = base64.b64encode(content).decode('utf-8')
-                    logger.info(f"[Evolution] Mídia baixada via URL: {len(content)} bytes")
+                    print(f"✅ [Evolution] Mídia baixada via getBase64! Tamanho: {len(base64_content)} chars")
                     return base64_content
                 else:
-                    logger.warning(f"[Evolution] URL retornou status {response.status_code}")
+                    print(f"⚠️ [Evolution] getBase64 retornou sem base64: {list(data.keys())}")
+        except Exception as e:
+            print(f"❌ [Evolution] Erro getBase64FromMediaMessage: {e}")
+
+        # MÉTODO 2: Tenta baixar direto da URL temporária do WhatsApp
+        if url:
+            print(f"🔄 [Evolution] Tentando fallback via URL direta...")
+            try:
+                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                    response = await client.get(url)
+                    print(f"📥 [Evolution] URL response: status={response.status_code}")
+
+                    if response.status_code == 200:
+                        content = response.content
+                        base64_content = base64.b64encode(content).decode('utf-8')
+                        print(f"✅ [Evolution] Mídia baixada via URL! Tamanho: {len(content)} bytes")
+                        return base64_content
+                    else:
+                        print(f"⚠️ [Evolution] URL retornou status {response.status_code}")
             except Exception as e:
-                logger.error(f"[Evolution] Erro ao baixar URL: {e}")
-        
+                print(f"❌ [Evolution] Erro ao baixar URL: {e}")
+
+        # MÉTODO 3: Tenta endpoint alternativo findMessages
+        try:
+            print(f"🔄 [Evolution] Tentando findMessages para buscar mídia...")
+
+            find_payload = {
+                "where": {
+                    "key": {
+                        "id": message_id
+                    }
+                }
+            }
+
+            result = await self._make_request(
+                "POST",
+                f"/chat/findMessages/{instance_name}",
+                find_payload,
+                timeout=30.0
+            )
+
+            if result["success"] and result.get("data"):
+                messages = result["data"]
+                if isinstance(messages, list) and len(messages) > 0:
+                    msg = messages[0]
+                    message_content = msg.get("message", {})
+
+                    # Procura base64 em diferentes tipos de mídia
+                    for media_type in ["imageMessage", "audioMessage", "videoMessage", "documentMessage", "stickerMessage"]:
+                        if media_type in message_content:
+                            media_data = message_content[media_type]
+                            if "base64" in media_data:
+                                print(f"✅ [Evolution] Mídia encontrada via findMessages!")
+                                return media_data["base64"]
+
+                            # Tenta URL da mídia
+                            media_url = media_data.get("url")
+                            if media_url:
+                                print(f"🔄 [Evolution] Encontrou URL via findMessages, baixando...")
+                                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                                    response = await client.get(media_url)
+                                    if response.status_code == 200:
+                                        content = response.content
+                                        base64_content = base64.b64encode(content).decode('utf-8')
+                                        print(f"✅ [Evolution] Mídia baixada via findMessages URL!")
+                                        return base64_content
+        except Exception as e:
+            print(f"❌ [Evolution] Erro findMessages: {e}")
+
+        print(f"❌ [Evolution] Todos os métodos de download falharam para message_id={message_id}")
         return None
 
 

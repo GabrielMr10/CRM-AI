@@ -117,6 +117,51 @@ async def delete_whatsapp_instance(
     return await integration_service.delete_whatsapp_instance(tenant.id)
 
 
+@router.post(
+    "/whatsapp/webhook/configure",
+    summary="Configurar webhook da instância"
+)
+async def configure_webhook(
+    tenant=Depends(get_current_tenant)
+):
+    """
+    Configura/atualiza o webhook da instância WhatsApp.
+    Use se as mensagens não estiverem chegando.
+    """
+    from .evolution_client import evolution_client
+    return await evolution_client.set_webhook(str(tenant.id))
+
+
+@router.get(
+    "/whatsapp/profile-picture/{phone}",
+    summary="Buscar foto de perfil do WhatsApp"
+)
+async def get_whatsapp_profile_picture(
+    phone: str,
+    tenant=Depends(get_current_tenant)
+):
+    """
+    Busca a URL da foto de perfil de um contato do WhatsApp.
+
+    Retorna:
+    - **url**: URL da foto de perfil (ou null se não disponível)
+
+    Nota: A foto pode não estar disponível se o usuário tiver
+    configurações de privacidade restritivas.
+    """
+    from .evolution_client import evolution_client
+
+    picture_url = await evolution_client.get_profile_picture(
+        tenant_id=str(tenant.id),
+        phone_number=phone
+    )
+
+    return {
+        "phone": phone,
+        "profile_picture_url": picture_url
+    }
+
+
 # ==================== WEBHOOK EVOLUTION ====================
 
 @router.post(

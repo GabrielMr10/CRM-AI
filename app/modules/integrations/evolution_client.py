@@ -570,6 +570,26 @@ class EvolutionAPIClient:
         """
         instance_name = self._get_instance_name(tenant_id)
 
+        # Método 1: POST com body (Evolution API v2)
+        try:
+            result = await self._make_request(
+                "POST",
+                f"/chat/fetchProfilePictureUrl/{instance_name}",
+                {"number": phone_number},
+                timeout=10.0
+            )
+
+            if result["success"]:
+                data = result["data"]
+                url = data.get("profilePictureUrl") or data.get("url") or data.get("picture")
+                if url:
+                    print(f"✅ [Evolution] Avatar encontrado para {phone_number}")
+                    return url
+
+        except Exception as e:
+            print(f"⚠️ [Evolution] Método POST falhou para avatar: {e}")
+
+        # Método 2: GET com query param (fallback)
         try:
             result = await self._make_request(
                 "GET",
@@ -579,11 +599,15 @@ class EvolutionAPIClient:
 
             if result["success"]:
                 data = result["data"]
-                return data.get("profilePictureUrl") or data.get("url")
+                url = data.get("profilePictureUrl") or data.get("url") or data.get("picture")
+                if url:
+                    print(f"✅ [Evolution] Avatar encontrado (GET) para {phone_number}")
+                    return url
 
         except Exception as e:
-            print(f"❌ [Evolution] Erro ao buscar foto de perfil: {e}")
+            print(f"⚠️ [Evolution] Método GET falhou para avatar: {e}")
 
+        print(f"❌ [Evolution] Não foi possível obter avatar para {phone_number}")
         return None
 
 

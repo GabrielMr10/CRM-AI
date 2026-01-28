@@ -284,10 +284,9 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
             key = msg.get("key", {})
             message_content = msg.get("message", {})
 
-            # Ignora mensagens enviadas por nós (fromMe = true)
-            if key.get("fromMe", False):
-                logger.debug(f"[Tenant {tenant_id}] Mensagem própria ignorada")
-                continue
+            # Detecta se é mensagem enviada por nós (fromMe = true)
+            # Isso inclui mensagens enviadas pelo celular, WhatsApp Web, etc.
+            is_from_me = key.get("fromMe", False)
 
             # Extrai telefone (remove @s.whatsapp.net)
             remote_jid = key.get("remoteJid", "")
@@ -408,7 +407,11 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
             else:
                 whatsapp_timestamp = datetime.now(timezone.utc)
 
-            print(f"📩 [Evolution] Telefone: {phone}, Conteúdo: {content[:50]}..., Tipo: {msg_type}")
+            # Determina direção baseado em fromMe
+            direction = MessageDirection.OUTBOUND if is_from_me else MessageDirection.INBOUND
+            direction_label = "outbound" if is_from_me else "inbound"
+
+            print(f"📩 [Evolution] Telefone: {phone}, Conteúdo: {content[:50] if content else ''}..., Tipo: {msg_type}, Direção: {direction_label}")
 
             # Salva no banco de dados
             db = SessionLocal()
@@ -420,7 +423,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                     phone=phone,
                     content=content or f"[{msg_type.value}]",
                     message_type=msg_type,
-                    direction=MessageDirection.INBOUND,
+                    direction=direction,
                     contact_name=contact_name,
                     media_url=media_url,
                     media_mime_type=media_mime_type,
@@ -436,6 +439,21 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
 
                 logger.info(f"[Tenant {tenant_id}] Mensagem salva: {message.id}")
 
+                # Busca foto de perfil se não tiver (apenas para mensagens recebidas)
+                if not conversation.contact_avatar_url and not is_from_me:
+                    try:
+                        from .evolution_client import evolution_client
+                        avatar_url = await evolution_client.get_profile_picture(
+                            tenant_id=tenant_id,
+                            phone_number=phone
+                        )
+                        if avatar_url:
+                            conversation.contact_avatar_url = avatar_url
+                            db.commit()
+                            logger.info(f"[Tenant {tenant_id}] Avatar atualizado para {phone}")
+                    except Exception as avatar_error:
+                        logger.debug(f"[Tenant {tenant_id}] Erro ao buscar avatar: {avatar_error}")
+
                 # Notifica via WebSocket
                 await ws_manager.broadcast_new_message(
                     tenant_id=tenant_id,
@@ -443,7 +461,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                     message={
                         "id": str(message.id),
                         "content": message.content,
-                        "direction": "inbound",
+                        "direction": direction_label,
                         "message_type": msg_type.value,
                         "created_at": message.created_at.isoformat(),
                         "sender_name": contact_name or phone,
@@ -451,6 +469,7 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
                         "external_id": external_id,
                         "media_url": message.media_url,
                         "media_mime_type": message.media_mime_type,
+                        "contact_avatar_url": conversation.contact_avatar_url,
                     }
                 )
 

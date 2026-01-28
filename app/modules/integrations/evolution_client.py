@@ -513,6 +513,79 @@ class EvolutionAPIClient:
         print(f"❌ [Evolution] Todos os métodos de download falharam para message_id={message_id}")
         return None
 
+    async def set_webhook(self, tenant_id: str) -> Dict[str, Any]:
+        """
+        Configura/atualiza o webhook da instância.
+        Use se as mensagens não estiverem chegando.
+        """
+        instance_name = self._get_instance_name(tenant_id)
+
+        payload = {
+            "url": self.webhook_url,
+            "webhook_by_events": False,
+            "webhook_base64": False,
+            "events": [
+                "CONNECTION_UPDATE",
+                "MESSAGES_UPSERT",
+                "MESSAGES_UPDATE",
+                "MESSAGES_DELETE",
+                "SEND_MESSAGE",
+                "QRCODE_UPDATED"
+            ]
+        }
+
+        print(f"🔧 [Evolution] Configurando webhook para {instance_name}: {self.webhook_url}")
+
+        result = await self._make_request(
+            "POST",
+            f"/webhook/set/{instance_name}",
+            payload,
+            timeout=15.0
+        )
+
+        if result["success"]:
+            print(f"✅ [Evolution] Webhook configurado com sucesso!")
+            return {
+                "instance": instance_name,
+                "status": "webhook_configured",
+                "url": self.webhook_url
+            }
+
+        raise Exception(f"Erro ao configurar webhook: {result['data']}")
+
+    async def get_profile_picture(
+        self,
+        tenant_id: str,
+        phone_number: str
+    ) -> Optional[str]:
+        """
+        Busca a URL da foto de perfil de um contato do WhatsApp.
+
+        Args:
+            tenant_id: ID do tenant
+            phone_number: Número no formato 5541999999999
+
+        Returns:
+            URL da foto de perfil ou None se não disponível
+        """
+        instance_name = self._get_instance_name(tenant_id)
+
+        try:
+            result = await self._make_request(
+                "GET",
+                f"/chat/fetchProfilePictureUrl/{instance_name}?number={phone_number}",
+                timeout=10.0
+            )
+
+            if result["success"]:
+                data = result["data"]
+                return data.get("profilePictureUrl") or data.get("url")
+
+        except Exception as e:
+            print(f"❌ [Evolution] Erro ao buscar foto de perfil: {e}")
+
+        return None
+
 
 # Instância singleton
 evolution_client = EvolutionAPIClient()

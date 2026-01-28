@@ -207,8 +207,12 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
     """Processa eventos da Evolution API e notifica via WebSocket."""
     from app.core.websocket_manager import ws_manager
 
+    # Normaliza nome do evento: "messages.upsert" -> "MESSAGES_UPSERT"
+    event_normalized = event.upper().replace(".", "_")
+    print(f"🔔 [Evolution] Evento original: {event} -> normalizado: {event_normalized}")
+
     try:
-        if event == "CONNECTION_UPDATE":
+        if event_normalized == "CONNECTION_UPDATE":
             # Notifica frontend sobre mudança de conexão
             state = data.get("state", "unknown")
             await ws_manager.send_to_tenant(tenant_id, {
@@ -218,7 +222,7 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] Conexão WhatsApp: {state}")
 
-        elif event == "QRCODE_UPDATED":
+        elif event_normalized == "QRCODE_UPDATED":
             # Notifica frontend com novo QR Code
             qrcode_data = data.get("qrcode", {})
             await ws_manager.send_to_tenant(tenant_id, {
@@ -228,11 +232,11 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             })
             logger.info(f"[Tenant {tenant_id}] QR Code atualizado")
 
-        elif event == "MESSAGES_UPSERT":
+        elif event_normalized == "MESSAGES_UPSERT":
             # Nova mensagem recebida - processa e salva no banco
             await _process_messages_upsert(tenant_id, data)
 
-        elif event == "MESSAGES_UPDATE":
+        elif event_normalized == "MESSAGES_UPDATE":
             # Atualização de status de mensagem (delivered, read)
             # TODO: Atualizar status no banco e notificar
             logger.info(f"[Tenant {tenant_id}] Status de mensagem atualizado")
@@ -241,12 +245,12 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
                 "data": data
             })
 
-        elif event == "SEND_MESSAGE":
+        elif event_normalized == "SEND_MESSAGE":
             # Confirmação de mensagem enviada
             logger.debug(f"[Tenant {tenant_id}] Mensagem enviada confirmada")
 
         else:
-            logger.debug(f"[Tenant {tenant_id}] Evento não tratado: {event}")
+            logger.debug(f"[Tenant {tenant_id}] Evento não tratado: {event} ({event_normalized})")
 
     except Exception as e:
         logger.error(f"Erro ao processar evento {event}: {e}")

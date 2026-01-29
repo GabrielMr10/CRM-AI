@@ -167,12 +167,19 @@ class ConnectionManager:
         status: str
     ):
         """Notifica sobre mudança de status de mensagem (sent, delivered, read)."""
-        await self.send_to_conversation_subscribers(conversation_id, {
+        payload = {
             "type": "message_status_updated",
             "conversation_id": conversation_id,
             "message_id": message_id,
             "status": status
-        })
+        }
+        print(f"📤 [WebSocket] Enviando status update: {payload}")
+
+        # Envia para inscritos na conversa
+        await self.send_to_conversation_subscribers(conversation_id, payload)
+
+        # Também envia para todo o tenant (garante que chegue mesmo se não inscrito)
+        await self.send_to_tenant(tenant_id, payload)
 
     async def broadcast_conversation_assigned(
         self,

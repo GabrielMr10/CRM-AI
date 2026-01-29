@@ -142,6 +142,7 @@ async def send_message(
 
     # 2. Envia para o WhatsApp via Evolution API
     external_id = None
+    send_success = False
     try:
         evolution_result = await evolution_client.send_text_message(
             tenant_id=str(tenant.id),
@@ -149,6 +150,7 @@ async def send_message(
             message=data.content
         )
         external_id = evolution_result.get("key", {}).get("id")
+        send_success = True
         print(f"✅ [WhatsApp] Mensagem enviada: {external_id}")
     except Exception as e:
         print(f"❌ [WhatsApp] Erro ao enviar: {e}")
@@ -157,6 +159,10 @@ async def send_message(
         # Não falha o endpoint - ainda salva a mensagem localmente
 
     # 3. Salva a mensagem no banco de dados
+    # Se Evolution API confirmou envio, já salva como "sent"
+    from app.modules.conversations.models import MessageStatus
+    initial_status = MessageStatus.SENT.value if send_success else MessageStatus.PENDING.value
+
     message = ConversationService.send_message(
         db,
         conversation_id=conversation_id,
@@ -164,6 +170,7 @@ async def send_message(
         data=data,
         sent_by=current_user,
         external_id=external_id,
+        status=initial_status,
     )
 
     return message

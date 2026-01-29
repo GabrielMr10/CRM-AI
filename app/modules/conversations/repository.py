@@ -266,13 +266,24 @@ class MessageRepository:
         sent_by_bot: bool = False,
         raw_data: dict | None = None,
         whatsapp_timestamp: datetime | None = None,
+        status: str | None = None,
     ) -> Message:
+        from app.modules.conversations.models import MessageStatus, MessageDirection
+
+        # Se não especificado, OUTBOUND começa como PENDING, INBOUND como SENT
+        if status is None:
+            if direction == MessageDirection.OUTBOUND.value:
+                status = MessageStatus.PENDING.value
+            else:
+                status = MessageStatus.SENT.value
+
         message = Message(
             conversation_id=conversation_id,
             tenant_id=tenant_id,
             content=content,
             message_type=message_type,
             direction=direction,
+            status=status,
             external_id=external_id,
             media_url=media_url,
             media_mime_type=media_mime_type,

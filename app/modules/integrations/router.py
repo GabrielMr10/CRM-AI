@@ -236,21 +236,16 @@ async def process_evolution_event(tenant_id: str, event: str, data: Dict[str, An
             # Nova mensagem recebida - processa e salva no banco
             await _process_messages_upsert(tenant_id, data)
 
-        elif event_normalized == "MESSAGES_UPDATE":
+        elif event_normalized in ["MESSAGES_UPDATE", "MESSAGE_UPDATE"]:
             # Atualização de status de mensagem (delivered, read)
-            # TODO: Atualizar status no banco e notificar
-            logger.info(f"[Tenant {tenant_id}] Status de mensagem atualizado")
-            await ws_manager.send_to_tenant(tenant_id, {
-                "type": "whatsapp_message_status",
-                "data": data
-            })
+            await _process_messages_update(tenant_id, data)
 
-        elif event_normalized == "SEND_MESSAGE":
-            # Confirmação de mensagem enviada
-            logger.debug(f"[Tenant {tenant_id}] Mensagem enviada confirmada")
+        elif event_normalized in ["SEND_MESSAGE", "MESSAGES_SET"]:
+            # Confirmação de mensagem enviada - atualiza status para SENT
+            await _process_send_message(tenant_id, data)
 
         else:
-            logger.debug(f"[Tenant {tenant_id}] Evento não tratado: {event} ({event_normalized})")
+            print(f"⚠️ [Evolution] Evento não tratado: {event} ({event_normalized})")
 
     except Exception as e:
         logger.error(f"Erro ao processar evento {event}: {e}")
@@ -484,6 +479,218 @@ async def _process_messages_upsert(tenant_id: str, data: Dict[str, Any]):
 
     except Exception as e:
         logger.error(f"[Tenant {tenant_id}] Erro ao processar MESSAGES_UPSERT: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def _process_messages_update(tenant_id: str, data: Dict[str, Any]):
+    """
+    Processa evento MESSAGES_UPDATE da Evolution API.
+    Atualiza status da mensagem no banco e notifica via WebSocket.
+
+    Status possíveis da Evolution:
+    - SERVER_ACK: Mensagem recebida pelo servidor WhatsApp
+    - DELIVERY_ACK: Mensagem entregue no dispositivo do destinatário
+    - READ: Mensagem lida pelo destinatário
+    - PLAYED: Áudio/vídeo reproduzido (conta como lido)
+    """
+    from uuid import UUID
+    from datetime import datetime, timezone
+    from app.db.session import SessionLocal
+    from app.core.websocket_manager import ws_manager
+    from app.modules.conversations.repository import MessageRepository
+    from app.modules.conversations.models import MessageStatus
+
+    print(f"📬 [Evolution MESSAGES_UPDATE] Processando: {data}")
+
+    try:
+        # Evolution API pode enviar em diferentes formatos
+        # Formato 1: { "key": { "id": "xxx" }, "status": "READ" }
+        # Formato 2: { "data": { "key": { "id": "xxx" }, "status": "READ" } }
+
+        update_data = data.get("data", data) if isinstance(data.get("data"), dict) else data
+
+        # Pode ser uma lista de updates ou um único
+        updates = update_data if isinstance(update_data, list) else [update_data]
+
+        for update in updates:
+            # Extrai o ID da mensagem (WhatsApp key ID)
+            # Evolution API envia em diferentes formatos:
+            # - key.id (formato padrão)
+            # - keyId (formato alternativo em MESSAGES_UPDATE)
+            key = update.get("key", {})
+            message_id = key.get("id") or update.get("keyId")
+
+            if not message_id:
+                # Tenta formato alternativo (não usar messageId - é ID interno da Evolution)
+                message_id = update.get("id")
+
+            if not message_id:
+                logger.warning(f"[Tenant {tenant_id}] MESSAGES_UPDATE sem message_id: {update}")
+                continue
+
+            print(f"📬 [Evolution] Buscando mensagem com external_id: {message_id}")
+
+            # Tenta extrair status de diferentes campos
+            # Evolution pode enviar em "status", "ack", ou "update.status"
+            raw_status = update.get("status") or update.get("ack") or update.get("update", {}).get("status") or ""
+
+            # Converte para string uppercase se for string
+            if isinstance(raw_status, str):
+                raw_status = raw_status.upper()
+            else:
+                raw_status = str(raw_status)
+
+            print(f"📬 [Evolution] raw_status recebido: {raw_status} (tipo: {type(update.get('status'))})")
+
+            # Mapeamento Evolution -> Nosso sistema
+            # Evolution API pode enviar strings ou números
+            status_map = {
+                # Formato string
+                "SERVER_ACK": MessageStatus.SENT.value,
+                "DELIVERY_ACK": MessageStatus.DELIVERED.value,
+                "READ": MessageStatus.READ.value,
+                "PLAYED": MessageStatus.READ.value,
+                "SENT": MessageStatus.SENT.value,
+                "DELIVERED": MessageStatus.DELIVERED.value,
+                # Formato numérico (algumas versões da Evolution API)
+                "2": MessageStatus.SENT.value,       # SERVER_ACK
+                "3": MessageStatus.DELIVERED.value,  # DELIVERY_ACK
+                "4": MessageStatus.READ.value,       # READ
+                "5": MessageStatus.READ.value,       # PLAYED
+            }
+
+            new_status = status_map.get(raw_status)
+
+            if not new_status:
+                print(f"⚠️ [Evolution] Status não mapeado: '{raw_status}'")
+                continue
+
+            print(f"📬 [Evolution] Atualizando status: {message_id} -> {new_status}")
+
+            # Atualiza no banco de dados
+            db = SessionLocal()
+            try:
+                # Busca mensagem pelo external_id (ID do WhatsApp)
+                message = MessageRepository.get_by_external_id(db, message_id)
+
+                if not message:
+                    print(f"⚠️ [Evolution] Mensagem não encontrada no banco: {message_id}")
+                    continue
+
+                # Só atualiza se for uma progressão de status
+                # pending -> sent -> delivered -> read
+                status_order = {
+                    MessageStatus.PENDING.value: 0,
+                    MessageStatus.SENT.value: 1,
+                    MessageStatus.DELIVERED.value: 2,
+                    MessageStatus.READ.value: 3,
+                }
+
+                current_order = status_order.get(message.status, 0)
+                new_order = status_order.get(new_status, 0)
+
+                print(f"📬 [Evolution] Status atual: {message.status} (order={current_order}), novo: {new_status} (order={new_order})")
+
+                if new_order <= current_order:
+                    print(f"⏭️ [Evolution] Ignorando - não é progressão de status")
+                    continue
+
+                # Prepara timestamps
+                now = datetime.now(timezone.utc)
+                delivered_at = now if new_status == MessageStatus.DELIVERED.value else None
+                read_at = now if new_status == MessageStatus.READ.value else None
+
+                # Atualiza no banco
+                MessageRepository.update_status(
+                    db,
+                    message=message,
+                    status=new_status,
+                    delivered_at=delivered_at,
+                    read_at=read_at,
+                )
+
+                logger.info(f"[Tenant {tenant_id}] Status atualizado: {message_id} -> {new_status}")
+
+                # Notifica frontend via WebSocket
+                await ws_manager.broadcast_message_status(
+                    tenant_id=tenant_id,
+                    conversation_id=str(message.conversation_id),
+                    message_id=str(message.id),
+                    status=new_status,
+                )
+
+            except Exception as e:
+                logger.error(f"[Tenant {tenant_id}] Erro ao atualizar status: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                db.close()
+
+    except Exception as e:
+        logger.error(f"[Tenant {tenant_id}] Erro ao processar MESSAGES_UPDATE: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def _process_send_message(tenant_id: str, data: Dict[str, Any]):
+    """
+    Processa evento SEND_MESSAGE da Evolution API.
+    Atualiza status da mensagem para SENT quando confirmado o envio.
+    """
+    from app.db.session import SessionLocal
+    from app.core.websocket_manager import ws_manager
+    from app.modules.conversations.repository import MessageRepository
+    from app.modules.conversations.models import MessageStatus
+
+    print(f"📤 [Evolution SEND_MESSAGE] Processando: {data}")
+
+    try:
+        # Extrai o ID da mensagem enviada
+        key = data.get("key", {})
+        message_id = key.get("id")
+
+        if not message_id:
+            # Tenta outros formatos
+            message_id = data.get("id") or data.get("messageId")
+
+        if not message_id:
+            print(f"⚠️ [Evolution] SEND_MESSAGE sem message_id")
+            return
+
+        print(f"📤 [Evolution] Confirmando envio: {message_id}")
+
+        db = SessionLocal()
+        try:
+            message = MessageRepository.get_by_external_id(db, message_id)
+
+            if not message:
+                print(f"⚠️ [Evolution] Mensagem não encontrada: {message_id}")
+                return
+
+            # Só atualiza se ainda estiver em PENDING
+            if message.status == MessageStatus.PENDING.value:
+                MessageRepository.update_status(
+                    db,
+                    message=message,
+                    status=MessageStatus.SENT.value,
+                )
+
+                print(f"✅ [Evolution] Status atualizado para SENT: {message_id}")
+
+                # Notifica frontend
+                await ws_manager.broadcast_message_status(
+                    tenant_id=tenant_id,
+                    conversation_id=str(message.conversation_id),
+                    message_id=str(message.id),
+                    status=MessageStatus.SENT.value,
+                )
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"[Tenant {tenant_id}] Erro ao processar SEND_MESSAGE: {e}")
         import traceback
         traceback.print_exc()
 

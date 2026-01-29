@@ -181,13 +181,14 @@ class ConversationService:
         sent_by: User | None = None,
         sent_by_bot: bool = False,
         external_id: str | None = None,
+        status: str | None = None,
     ) -> Message:
         """
         Registra mensagem enviada.
         A integração com Z-API é feita no módulo de integrations.
         """
         conversation = ConversationService.get_or_404(db, conversation_id, tenant_id)
-        
+
         message = MessageRepository.create(
             db,
             conversation_id=conversation.id,
@@ -198,6 +199,7 @@ class ConversationService:
             external_id=external_id,
             sent_by_id=sent_by.id if sent_by else None,
             sent_by_bot=sent_by_bot,
+            status=status,
         )
         
         # Atualizar última mensagem
